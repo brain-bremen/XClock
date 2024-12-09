@@ -75,8 +75,9 @@ class LabJackT4:
 
     handle: int
 
-    _used_clock_channels: set[str] = set()
-    _unused_clock_channels: set[str]
+    _used_clock_channel_names: set[str] = set()
+    _unused_clock_channel_names: set[str]
+    _clock_channels: list[ClockChannel] = []
 
     def __init__(self):
 
@@ -102,17 +103,21 @@ class LabJackT4:
         # disable clock0 as its mutually exclusive with CLOCK1 and CLOCK2
         self._enable_clock(0, False)
 
-        self._unused_clock_channels = set(LabJackT4.available_clock_channels)
+        self._unused_clock_channel_names = set(LabJackT4.available_clock_channels)
 
     @check_if_initialized
     def start_continuous_clocks(self):
-
-        # DIO_EF_CLOCK0_ENABLE
-        # enable PWM: DIO#_EF_ENABLE
         # TODO: enable channels at the same time using eWriteNames
-        for channel in self._used_clock_channels:
-            registers = LabJackClockChannelRegisterNames(channel)
+        for channel in self._clock_channels:
+            registers = LabJackClockChannelRegisterNames(channel.channel_name)
             ljm.eWriteName(self.handle, registers.enable, 1)
+            self._enable_clock(clock_id=channel.clock_source, enable=True)
+
+    def stop_continuous_clocks(self):
+        pass
+
+    def wait_for_trigger_to_start_clocks(self):
+        pass
 
     @check_if_initialized
     def add_clock_channel(
@@ -120,11 +125,11 @@ class LabJackT4:
         sample_rate: int,
         channel_name: str | None = None,
         enable_now: bool = True,
-        # on_time=None,
+        # on_time=None, TODO: Implement on_time and off_time via duty_cycle
         # off_time=None,
     ):
 
-        if len(self._unused_clock_channels) == 0:
+        if len(self._unused_clock_channel_names) == 0:
             raise ValueError(
                 "No more clock channels available. Used channels: {self._used_clock_channels}"
             )
@@ -136,7 +141,7 @@ class LabJackT4:
         #     )
 
         if channel_name is None:
-            channel_name = self._unused_clock_channels.pop()
+            channel_name = self._unused_clock_channel_names.pop()
 
         if channel_name not in LabJackT4.available_clock_channels:
             raise ValueError(
@@ -144,7 +149,7 @@ class LabJackT4:
             )
 
         clock_id = (
-            len(self._used_clock_channels) + 1
+            len(self._used_clock_channel_names) + 1
         )  # CLOCK1 and CLOCK2 are used for PWM
         roll_value = self.base_clock_frequency // self.divisor // sample_rate
         self._configure_clock(
@@ -153,6 +158,7 @@ class LabJackT4:
             roll_value=roll_value,
             enable=enable_now,
         )
+        actual_sample_rate = self.base_clock_frequency // self.divisor // roll_value
 
         self._configure_clock_channel(
             roll_value=roll_value,
@@ -161,9 +167,18 @@ class LabJackT4:
             enable=enable_now,
         )
 
-        self._used_clock_channels.add(channel_name)
+        self._used_clock_channel_names.add(channel_name)
         logger.debug(
             f"Added clock channel {channel_name} with sample rate {sample_rate}"
+        )
+
+        self._clock_channels.append(
+            ClockChannel(
+                channel_name=channel_name,
+                clock_source=clock_id,
+                enabled=enable_now,
+                sample_rate=actual_sample_rate,
+            )
         )
 
     def _configure_clock_channel(
@@ -188,17 +203,18 @@ class LabJackT4:
         # re-enable clock if configured
         self._enable_clock(clock_id=clock_id, enable=enable)
 
-    @check_if_initialized
-    def disable_clock_channel(self, clock_channel: LabJackClockChannelRegisterNames):
+        # enable channel if enalbe_now is True
+        if enable:
+            ljm.eWriteName(self.handle, registers.enable, 1)
 
-        # disable clock: DIO_EF_CLOCK0_ENABLE
-        self._enable_clock(False)
-
-        # enable PWM: DIO#_EF_ENABLE
-        ljm.eWriteName(self.handle, clock_channel.enable, 0)
+    def remove_clock_channel(self, channel_name: str):
+        pass
 
     def __str__(self):
-        return f"LabJack T4 with handle {self.handle}"
+        out = f"LabJack T4 with handle {self.handle}:\n"
+        for channel in self._clock_channels:
+            out += f"\t- {str(channel)}\n"
+        return out
 
     def __del__(self):
         ljm.close(self.handle)
@@ -227,5 +243,16 @@ if __name__ == "__main__":
 
     logger.debug("Starting LabJack T4 device...")
     t4 = LabJackT4()
-    t4.add_clock_channel(1000)
-    t4.add_clock_channel(1000)
+    available_clock_channels = t4.available_clock_channels
+
+    t4.add_clock_channel(
+        sample_rate=60, channel_name=available_clock_channels[0], enable_now=False
+    )
+
+    t4.add_clock_channel(
+        sample_rate=90, channel_name=available_clock_channels[1], enable_now=False
+    )
+
+    print(t4)
+
+    t4.start_continuous_clocks()
