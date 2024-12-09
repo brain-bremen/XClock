@@ -1,0 +1,10 @@
+[project]
+name = "neuro-clock-sync"
+version = "0.1.0"
+description = "Tools for synchronizing clocks in a neurophysiology experiments"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "labjack-ljm>=1.23.0",
+    "nidaqmx>=1.0.2",
+]
