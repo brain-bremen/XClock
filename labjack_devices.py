@@ -1,4 +1,4 @@
-from daq_device import ClockDaqDevice
+from daq_device import DaqDevice
 import labjack
 import labjack.ljm as ljm
 import logging
@@ -60,7 +60,7 @@ class ClockChannel:
     sample_rate: int
 
 
-class LabJackT4:
+class LabJackT4(DaqDevice):
     """LabJack T4 device class
 
     Supports two clock signals on FIO6 and FIO7. The base clock
@@ -68,7 +68,22 @@ class LabJackT4:
 
     """
 
-    available_clock_channels = ("DIO6", "DIO7")
+    # TODO: timestamps of rising TTL pulses can be recorded from these (including self-generated)
+    available_input_clock_channels = "DIO"
+
+    # TODO: channels that can be used to trigger a recording
+    available_input_start_trigger_channels = ("DIO11", "DIO12")
+
+    @staticmethod
+    def get_available_input_trigger_start_channels():
+        return LabJackT4.available_input_start_trigger_channels
+
+    # clock signals can be given out on these channels
+    available_output_clock_channels = ("DIO6", "DIO7")
+
+    @staticmethod
+    def get_available_output_clock_channels():
+        return LabJackT4.available_output_clock_channels
 
     base_clock_frequency = 80_000_000  # 80 MHz
     divisor = 256
@@ -80,7 +95,6 @@ class LabJackT4:
     _clock_channels: list[ClockChannel] = []
 
     def __init__(self):
-
         try:
             self.handle = ljm.openS("T4", "ANY", "ANY")
         except Exception as e:
@@ -103,7 +117,9 @@ class LabJackT4:
         # disable clock0 as its mutually exclusive with CLOCK1 and CLOCK2
         self._enable_clock(0, False)
 
-        self._unused_clock_channel_names = set(LabJackT4.available_clock_channels)
+        self._unused_clock_channel_names = set(
+            LabJackT4.available_output_clock_channels
+        )
 
     @check_if_initialized
     def start_continuous_clocks(self):
@@ -128,7 +144,6 @@ class LabJackT4:
         # on_time=None, TODO: Implement on_time and off_time via duty_cycle
         # off_time=None,
     ):
-
         if len(self._unused_clock_channel_names) == 0:
             raise ValueError(
                 "No more clock channels available. Used channels: {self._used_clock_channels}"
@@ -143,7 +158,7 @@ class LabJackT4:
         if channel_name is None:
             channel_name = self._unused_clock_channel_names.pop()
 
-        if channel_name not in LabJackT4.available_clock_channels:
+        if channel_name not in LabJackT4.available_output_clock_channels:
             raise ValueError(
                 "Invalid clock channel name {channel_name}. Must be in {LabJackT4.available_clock_channels}"
             )
@@ -184,7 +199,6 @@ class LabJackT4:
     def _configure_clock_channel(
         self, roll_value: int, channel_name: str, clock_id: int, enable: bool = True
     ):
-
         registers = LabJackClockChannelRegisterNames(channel_name)
 
         duty_cycle = round(0.25 * roll_value)
@@ -225,7 +239,6 @@ class LabJackT4:
     def _configure_clock(
         self, clock_id: int, divisor: int, roll_value: int, enable: bool = True
     ):
-
         register_names = LabJackClockRegisters(clock_id)
 
         # disable the clock during config
@@ -240,10 +253,9 @@ class LabJackT4:
 
 
 if __name__ == "__main__":
-
     logger.debug("Starting LabJack T4 device...")
     t4 = LabJackT4()
-    available_clock_channels = t4.available_clock_channels
+    available_clock_channels = t4.available_output_clock_channels
 
     t4.add_clock_channel(
         sample_rate=60, channel_name=available_clock_channels[0], enable_now=False
