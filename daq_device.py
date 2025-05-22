@@ -1,22 +1,42 @@
 from abc import ABC, abstractmethod
 
 
+class OutputClockChannel:
+    channel_name: str
+    clock_frequency: int
+
+
 class DaqDevice(ABC):
-    pass
-
-    @abstractmethod
     @staticmethod
-    def get_available_output_clock_channels() -> list[str]:
+    @abstractmethod
+    def get_available_input_clock_channels() -> list[str] | None:
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def get_available_input_start_trigger_channels() -> list[str] | None:
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def get_available_output_clock_channels() -> list[str] | None:
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def get_available_output_barcode_channels() -> list[str] | None:
         pass
 
     @abstractmethod
-    @staticmethod
-    def get_available_input_clock_channels() -> list[str]:
+    def start_output_clocks_now(
+        self, output_channels: list[OutputClockChannel]
+    ) -> None:
         pass
 
     @abstractmethod
-    @staticmethod
-    def get_available_input_start_channels() -> list[str]:
+    def start_output_clocks_on_input_trigger(
+        self, output_channels: list[OutputClockChannel], trigger_channel: str
+    ):
         pass
 
     # @abstractmethod
