@@ -279,6 +279,7 @@ class LabJackT4:
         """
         import time
 
+        # TODO: This is a ChatGPT solution and can be improved by using
         interval_us = 1000  # 1 ms
         register = channel_name
         start_time = time.time()
@@ -299,6 +300,25 @@ class LabJackT4:
         return False
 
 
+def edge_detect(handle, channel):
+    import time
+
+    # Configure  for rising edge timing
+    ljm.eWriteName(handle, f"{channel}_EF_ENABLE", 0)  # Disable first
+    ljm.eWriteName(handle, f"{channel}_EF_INDEX", 4)  # Mode 4 = Rising Edge Timing
+    ljm.eWriteName(handle, f"{channel}_EF_ENABLE", 1)  # Enable
+
+    print(f"Waiting for rising edges on {channel}...")
+
+    last_timestamp = 0
+    while True:
+        timestamp = ljm.eReadName(handle, "DIO0_EF_READ_A")
+        if timestamp != last_timestamp:
+            print(f"Edge detected at timestamp: {timestamp}")
+            last_timestamp = timestamp
+        time.sleep(0.01)  # Adjust polling rate as needed
+
+
 if __name__ == "__main__":
     logger.debug("Starting LabJack T4 device...")
     t4 = LabJackT4()
@@ -313,6 +333,9 @@ if __name__ == "__main__":
     )
 
     print(t4)
+
+    edge_detect(t4.handle, "DIO4")
+
     if t4.wait_for_rising_edge("DIO4", timeout=20):
         t4.start_continuous_clocks()
     else:
