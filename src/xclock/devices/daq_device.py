@@ -19,7 +19,7 @@ class DaqDevice(ABC):
         pass
 
     @abstractmethod
-    def add_clock_channel(
+    def add_continuous_clock_channel(
         self,
         sample_rate_hz: int,
         channel_name: str | None = None,

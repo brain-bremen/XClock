@@ -1,3 +1,4 @@
+from enum import IntEnum
 from xclock.devices.daq_device import DaqDevice, EdgeType
 import labjack.ljm as ljm
 import logging
@@ -8,35 +9,65 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-PWM_OUT_FEATURE_INDEX = 0
+
+class ExtendedFeatureIndices(IntEnum):
+    PWM_OUT_FEATURE_INDEX = 0
+    PWM_OUT_WITH_PHASE_EF_INDEX = 1
+    PULSE_OUT_EF_INDEX = 2
 
 
-@dataclass
-class LabJackClockChannelRegisterNames:
+class DigIoRegisters:
     channel: str  # DIO#
-    enable: str  # DIO#_EF_ENABLE
-    feature_index: str  # DIO#_EF_INDEX
-    feature_config: str  # DIO#_EF_CONFIG_A
-    clock_source: str  # DIO#_EF_CLOCK_SOURCE
 
     def __init__(self, channel: str):
         self.channel = channel
-        self.enable = f"{channel}_EF_ENABLE"
-        self.feature_index = f"{channel}_EF_INDEX"
-        self.feature_config = f"{channel}_EF_CONFIG_A"
-        self.clock_source = f"{channel}_EF_CLOCK_SOURCE"
+
+    @property
+    def enable(self) -> str:
+        return f"{self.channel}_EF_ENABLE"
+
+    @property
+    def feature_index(self) -> str:
+        return f"{self.channel}_EF_INDEX"
+
+    @property
+    def feature_configA(self) -> str:
+        return f"{self.channel}_EF_CONFIG_A"
+
+    @property
+    def feature_configB(self) -> str:
+        return f"{self.channel}_EF_CONFIG_B"
+
+    @property
+    def feature_configC(self) -> str:
+        return f"{self.channel}_EF_CONFIG_C"
+
+    @property
+    def clock_source(self) -> str:
+        return f"{self.channel}_EF_CLOCK_SOURCE"
 
 
-@dataclass
-class LabJackClockRegisters:
-    enable: str  # DIO_EF_CLOCK#_ENABLE
-    roll_value: str  # DIO_EF_CLOCK#_ROLL_VALUE
-    divisor: str  # DIO_EF_CLOCK#_DIVISOR
+class ClockRegisters:
+    clock_id: int
 
-    def __init__(self, clock_source: int):
-        self.enable = f"DIO_EF_CLOCK{clock_source}_ENABLE"
-        self.roll_value = f"DIO_EF_CLOCK{clock_source}_ROLL_VALUE"
-        self.divisor = f"DIO_EF_CLOCK{clock_source}_DIVISOR"
+    def __init__(self, clock_id: int):
+        self.clock_id = clock_id
+
+    @property
+    def enable(self):
+        return f"DIO_EF_CLOCK{self.clock_id}_ENABLE"
+
+    @property
+    def roll_value(self):
+        return f"DIO_EF_CLOCK{self.clock_id}_ROLL_VALUE"
+
+    @property
+    def divisor(self):
+        return f"DIO_EF_CLOCK{self.clock_id}_DIVISOR"
+
+    @property
+    def options(self):
+        return f"DIO_EF_CLOCK{self.clock_id}_OPTIONS"
 
 
 @dataclass
@@ -51,15 +82,20 @@ def _enable_clocks(handle: int, clock_ids: list[int] = [0], enable: bool = True)
     ljm.eWriteNames(
         handle,
         len(clock_ids),
-        [LabJackClockRegisters(id).enable for id in clock_ids],
+        [ClockRegisters(id).enable for id in clock_ids],
         [int(enable)] * len(clock_ids),
     )
 
 
-def _configure_clock_channel(
-    handle: int, roll_value: int, channel_name: str, clock_id: int, enable: bool = True
+def _configure_pulsed_clock_channel(
+    handle: int,
+    number_of_pulses: int,
+    roll_value: int,
+    channel_name: str,
+    clock_id: int,
+    enable: bool = True,
 ):
-    registers = LabJackClockChannelRegisterNames(channel_name)
+    registers = DigIoRegisters(channel_name)
 
     duty_cycle = round(0.25 * roll_value)
 
@@ -69,10 +105,64 @@ def _configure_clock_channel(
     # DIO_EF_CLOCK0_ENABLE = 0 // Disable the clock during config
     _enable_clocks(handle=handle, clock_ids=[clock_id], enable=False)
 
-    # DIO#_EF_INDEX = 0 // PWM out index
-    ljm.eWriteName(handle, registers.feature_index, PWM_OUT_FEATURE_INDEX)
-    ljm.eWriteName(handle, registers.feature_config, duty_cycle)
-    ljm.eWriteName(handle, registers.clock_source, clock_id)
+    config = {
+        registers.clock_source: clock_id,
+        registers.feature_index: ExtendedFeatureIndices.PULSE_OUT_EF_INDEX,
+        registers.feature_configA: duty_cycle,
+        registers.feature_configB: 0,
+        registers.feature_configC: number_of_pulses,
+    }
+
+    if enable:
+        config[registers.enable] = 1
+
+    ljm.eWriteNames(
+        handle=handle,
+        numFrames=len(config),
+        aNames=config.keys(),
+        aValues=config.values(),
+    )
+
+
+def _configure_continuous_clock_channel(
+    handle: int, roll_value: int, channel_name: str, clock_id: int, enable: bool = True
+):
+    """
+    Configures a digital output channel to act as a continuous clock channel (PWM).
+
+    Args:
+
+        handle (int): The LJM handle for the LabJack device.
+        roll_value (int): The roll value for the clock.
+        channel_name (str): The name of the channel to configure (e.g., "DIO6").
+        clock_id (int): The clock ID to use for the channel (1 or 2).
+        enable (bool): Whether to enable the channel after configuration.
+
+    """
+    registers = DigIoRegisters(channel_name)
+
+    duty_cycle = round(0.25 * roll_value)
+
+    # disable, as we cannot change index if enabled
+    ljm.eWriteName(handle, registers.enable, 0)
+
+    # DIO_EF_CLOCK0_ENABLE = 0 // Disable the clock during config
+    _enable_clocks(handle=handle, clock_ids=[clock_id], enable=False)
+
+    config = {
+        registers.feature_index: ExtendedFeatureIndices.PWM_OUT_FEATURE_INDEX,
+        registers.clock_source: clock_id,
+        registers.feature_configA: duty_cycle,
+        registers.feature_configB: 0,
+        registers.feature_configC: 0,
+    }
+
+    ljm.eWriteNames(
+        handle=handle,
+        numFrames=len(config),
+        aNames=config.keys(),
+        aValues=config.values(),
+    )
 
     # re-enable clock if configured
     _enable_clocks(handle=handle, clock_ids=[clock_id], enable=enable)
@@ -85,17 +175,27 @@ def _configure_clock_channel(
 def _configure_clock(
     handle, clock_id: int, divisor: int, roll_value: int, enable: bool = True
 ):
-    register_names = LabJackClockRegisters(clock_id)
+    register_names = ClockRegisters(clock_id)
 
     # disable the clock during config
     ljm.eWriteName(handle, register_names.enable, 0)
 
     # configure the clock
-    ljm.eWriteName(handle, register_names.divisor, divisor)
-    ljm.eWriteName(handle, register_names.roll_value, roll_value)
+    clock_config = {
+        register_names.divisor: divisor,
+        register_names.roll_value: roll_value,
+    }
 
+    if enable:
+        clock_config[register_names.enable] = int(enable)
     # set to configured state
     ljm.eWriteName(handle, register_names.enable, int(enable))
+    ljm.eWriteNames(
+        handle=handle,
+        numFrames=len(clock_config),
+        aNames=clock_config.keys(),
+        aValues=clock_config.values(),
+    )
 
 
 def _configure_input_trigger_channel(handle: int):
@@ -137,10 +237,10 @@ class LabJackT4(DaqDevice):
     _clock_channels: list[ClockChannel] = []
 
     def __init__(self):
-        if not hasattr(ljm, "_staticLib"):
-            raise XClockException(
-                "Labjack library is not loaded. Have you installed it?"
-            )
+        # if not hasattr(ljm, "_staticLib"):
+        #     raise XClockException(
+        #         "Labjack library is not loaded. Have you installed it?"
+        #     )
 
         try:
             self.handle = ljm.openS("T4", "ANY", "ANY")
@@ -171,20 +271,28 @@ class LabJackT4(DaqDevice):
     def start_continuous_clocks(self):
         if self.handle is None:
             raise XClockException("Labjack device is not initialized")
-        names = []
-        values = []
-        for channel in self._clock_channels:
-            registers = LabJackClockChannelRegisterNames(channel.channel_name)
-            names.append(registers.enable)
-            values.append(1)
-        if names:
-            ljm.eWriteNames(self.handle, len(names), names, values)
         # Enable all clocks at the same time
         _enable_clocks(
             handle=self.handle,
             clock_ids=[channel.clock_source for channel in self._clock_channels],
             enable=True,
         )
+
+        # enable channels
+        values = []
+        names = []
+        for channel in self._clock_channels:
+            registers = DigIoRegisters(channel.channel_name)
+            names.append(registers.enable)
+            values.append(1)
+        if names:
+            ljm.eWriteNames(self.handle, len(names), names, values)
+        # # Enable all clocks at the same time
+        # _enable_clocks(
+        #     handle=self.handle,
+        #     clock_ids=[channel.clock_source for channel in self._clock_channels],
+        #     enable=True,
+        # )
 
     def stop_continuous_clocks(self):
         if self.handle is None:
@@ -195,7 +303,7 @@ class LabJackT4(DaqDevice):
             enable=False,
         )
 
-    def add_clock_channel(
+    def add_continuous_clock_channel(
         self,
         sample_rate_hz: int,
         channel_name: str | None = None,
@@ -237,7 +345,7 @@ class LabJackT4(DaqDevice):
         )
         actual_sample_rate = self.base_clock_frequency // self.divisor // roll_value
 
-        _configure_clock_channel(
+        _configure_continuous_clock_channel(
             handle=self.handle,
             roll_value=roll_value,
             channel_name=channel_name,
@@ -331,13 +439,13 @@ if __name__ == "__main__":
         t4 = LabJackT4()
         available_clock_channels = t4.get_available_output_clock_channels()
 
-        t4.add_clock_channel(
+        t4.add_continuous_clock_channel(
             sample_rate_hz=40,
             channel_name=available_clock_channels[1],
             enable_now=False,
         )
 
-        t4.add_clock_channel(
+        t4.add_continuous_clock_channel(
             sample_rate_hz=20,
             channel_name=available_clock_channels[0],
             enable_now=False,

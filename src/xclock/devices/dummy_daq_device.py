@@ -14,7 +14,7 @@ class DummyDaqDevice(DaqDevice):
     def get_available_output_clock_channels() -> tuple[str, ...]:
         return ("FOOCLK1", "FOOCLK2")
 
-    def add_clock_channel(
+    def add_continuous_clock_channel(
         self,
         sample_rate_hz: int,
         channel_name: str | None = None,
