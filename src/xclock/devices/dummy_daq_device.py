@@ -1,4 +1,4 @@
-from daq_device import DaqDevice, EdgeType
+from xclock.devices.daq_device import DaqDevice, EdgeType
 
 import logging
 

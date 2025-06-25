@@ -3,8 +3,22 @@ name = "XClock"
 version = "0.1.0"
 description = "Tools for synchronizing clocks in a neurophysiology experiments"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "labjack-ljm>=1.23.0",
     "nidaqmx>=1.0.2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/brain-bremen/XClock"
+Repository = "https://github.com/brain-bremen/XClock"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+package = true
+
+[project.scripts]
+xclock = "cli.main:main"

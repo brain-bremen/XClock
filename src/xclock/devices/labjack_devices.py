@@ -1,8 +1,8 @@
-from daq_device import DaqDevice, EdgeType
+from xclock.devices.daq_device import DaqDevice, EdgeType
 import labjack.ljm as ljm
 import logging
 from dataclasses import dataclass
-from errors import XClockException
+from xclock.errors import XClockException
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
