@@ -1,27 +1,14 @@
-from daq_device import DaqDevice
-import labjack
+from daq_device import DaqDevice, EdgeType
 import labjack.ljm as ljm
 import logging
 from dataclasses import dataclass
-from enum import Enum
-from typing import Literal
-
+from errors import XClockException
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 PWM_OUT_FEATURE_INDEX = 0
-
-
-# decorator to check if device is initialized
-def check_if_initialized(func):
-    def wrapper(*args, **kwargs):
-        if args[0].handle is None:
-            raise ValueError("LabJack T4 device is not initialized")
-        return func(*args, **kwargs)
-
-    return wrapper
 
 
 @dataclass
@@ -115,7 +102,7 @@ def _configure_input_trigger_channel(handle: int):
     pass
 
 
-class LabJackT4:
+class LabJackT4(DaqDevice):
     """LabJack T4 device class
 
     Supports two clock signals on FIO6/DIO6 and FIO7/DIO7. The base clock
@@ -123,19 +110,24 @@ class LabJackT4:
 
     """
 
-    # TODO: timestamps of rising TTL pulses can be recorded from these (including self-generated)
-    available_input_clock_channels = "DIO"
-
-    # TODO: channels that can be used to trigger a recording
-    available_input_start_trigger_channels = ("DIO11", "DIO12")
-
     # clock signals can be given out on these channels
     available_output_clock_channels = ("DIO6", "DIO7")
+
+    @staticmethod
+    def get_available_output_clock_channels():
+        return LabJackT4.available_output_clock_channels
+
+    # the device can wait for triggers on these channels
+    availabile_input_trigger_channels = ("DIO4", "DIO5")
+
+    @staticmethod
+    def get_available_input_start_trigger_channels() -> tuple[str, ...]:
+        return LabJackT4.availabile_input_trigger_channels
 
     base_clock_frequency = 80_000_000  # 80 MHz
     divisor = 256
 
-    handle: int
+    handle: int | None = None
     deviceType: int
     connectionType: int
     serialNumber: int
@@ -145,12 +137,17 @@ class LabJackT4:
     _clock_channels: list[ClockChannel] = []
 
     def __init__(self):
+        if not hasattr(ljm, "_staticLib"):
+            raise XClockException(
+                "Labjack library is not loaded. Have you installed it?"
+            )
+
         try:
             self.handle = ljm.openS("T4", "ANY", "ANY")
         except Exception as e:
+            self.handle = None
             logger.error(f"Failed to open LabJack T4: {str(e)}")
-            # self.handle = None
-            raise e
+            exit()
 
         (self.deviceType, self.connectionType, self.serialNumber, _, _, _) = (
             ljm.getHandleInfo(self.handle)
@@ -171,9 +168,9 @@ class LabJackT4:
             LabJackT4.available_output_clock_channels
         )
 
-    @check_if_initialized
     def start_continuous_clocks(self):
-        # Enable all clock channels at the same time using eWriteNames
+        if self.handle is None:
+            raise XClockException("Labjack device is not initialized")
         names = []
         values = []
         for channel in self._clock_channels:
@@ -183,7 +180,6 @@ class LabJackT4:
         if names:
             ljm.eWriteNames(self.handle, len(names), names, values)
         # Enable all clocks at the same time
-        # for channel in self._clock_channels:
         _enable_clocks(
             handle=self.handle,
             clock_ids=[channel.clock_source for channel in self._clock_channels],
@@ -191,12 +187,14 @@ class LabJackT4:
         )
 
     def stop_continuous_clocks(self):
-        pass
+        if self.handle is None:
+            raise XClockException("Labjack device is not initialized")
+        _enable_clocks(
+            handle=self.handle,
+            clock_ids=[channel.clock_source for channel in self._clock_channels],
+            enable=False,
+        )
 
-    def wait_for_trigger_to_start_clocks(self):
-        pass
-
-    @check_if_initialized
     def add_clock_channel(
         self,
         sample_rate_hz: int,
@@ -205,8 +203,10 @@ class LabJackT4:
         # on_time=None, TODO: Implement on_time and off_time via duty_cycle
         # off_time=None,
     ):
+        if self.handle is None:
+            raise XClockException("Labjack device is not initialized")
         if len(self._unused_clock_channel_names) == 0:
-            raise ValueError(
+            raise XClockException(
                 "No more clock channels available. Used channels: {self._used_clock_channels}"
             )
 
@@ -220,7 +220,7 @@ class LabJackT4:
             channel_name = self._unused_clock_channel_names.pop()
 
         if channel_name not in LabJackT4.available_output_clock_channels:
-            raise ValueError(
+            raise XClockException(
                 "Invalid clock channel name {channel_name}. Must be in {LabJackT4.available_clock_channels}"
             )
 
@@ -269,9 +269,15 @@ class LabJackT4:
         return out
 
     def __del__(self):
-        ljm.close(self.handle)
+        if self.handle:
+            ljm.close(self.handle)
 
-    def wait_for_rising_edge(self, channel_name: str, timeout: float = 5.0) -> bool:
+    def wait_for_trigger_edge(
+        self,
+        channel_name: str,
+        timeout_s: float = 5.0,
+        edge_type: EdgeType = EdgeType.RISING,
+    ) -> bool:
         """
         Waits for a rising edge (0->1) on the specified digital input channel.
         Returns True if a rising edge is detected within the timeout, else False.
@@ -287,7 +293,7 @@ class LabJackT4:
         interval_handle = 1  # Use 1 as the interval handle ID
         ljm.startInterval(interval_handle, interval_us)
         try:
-            while time.time() - start_time < timeout:
+            while time.time() - start_time < timeout_s:
                 value = ljm.eReadName(self.handle, register)
                 if prev_value == 0 and value == 1:
                     logger.debug(f"Rising edge detected on {channel_name}")
@@ -320,23 +326,36 @@ def edge_detect(handle, channel):
 
 
 if __name__ == "__main__":
-    logger.debug("Starting LabJack T4 device...")
-    t4 = LabJackT4()
-    available_clock_channels = t4.available_output_clock_channels
+    try:
+        logger.debug("Starting LabJack T4 device...")
+        t4 = LabJackT4()
+        available_clock_channels = t4.get_available_output_clock_channels()
 
-    t4.add_clock_channel(
-        sample_rate_hz=40, channel_name=available_clock_channels[1], enable_now=False
-    )
+        t4.add_clock_channel(
+            sample_rate_hz=40,
+            channel_name=available_clock_channels[1],
+            enable_now=False,
+        )
 
-    t4.add_clock_channel(
-        sample_rate_hz=20, channel_name=available_clock_channels[0], enable_now=False
-    )
+        t4.add_clock_channel(
+            sample_rate_hz=20,
+            channel_name=available_clock_channels[0],
+            enable_now=False,
+        )
 
-    print(t4)
+        print(t4)
 
-    edge_detect(t4.handle, "DIO4")
+        input_trigger_channel = t4.get_available_input_start_trigger_channels()[0]
+        timeout = 20  # s
 
-    if t4.wait_for_rising_edge("DIO4", timeout=20):
-        t4.start_continuous_clocks()
-    else:
-        logger.debug("Timeout after ")
+        logger.debug(
+            f"Waiting for input trigger on channel {input_trigger_channel} for {timeout} s"
+        )
+        if t4.wait_for_trigger_edge(input_trigger_channel, timeout_s=timeout):
+            logger.debug(f"Detected input trigger on channel {input_trigger_channel}")
+            t4.start_continuous_clocks()
+
+        else:
+            logger.debug("No input detected")
+    except Exception as e:
+        logger.error(str(e))
