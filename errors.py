@@ -1,0 +1,2 @@
+class XClockException(Exception):
+    pass
