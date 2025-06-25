@@ -207,10 +207,6 @@ def _set_output_channel(handle: int, channel_name: str, state: int):
     logger.debug(f"Set output channel {channel_name} to {state}")
 
 
-def _configure_input_trigger_channel(handle: int):
-    pass
-
-
 class LabJackT4(DaqDevice):
     """LabJack T4 device class
 
@@ -249,11 +245,6 @@ class LabJackT4(DaqDevice):
     _output_channel: str  # channel that is ON during clock output
 
     def __init__(self):
-        # if not hasattr(ljm, "_staticLib"):
-        #     raise XClockException(
-        #         "Labjack library is not loaded. Have you installed it?"
-        #     )
-
         try:
             self.handle = ljm.openS("T4", "ANY", "ANY")
         except Exception as e:
@@ -317,6 +308,10 @@ class LabJackT4(DaqDevice):
             clock_ids=[channel.clock_source for channel in self._clock_channels],
             enable=False,
         )
+
+    def add_pulsed_clock_channel(self, sample_rate_hz: int, channel_name: str):
+        # TODO: use __configure_pulsed_clock_channel
+        pass
 
     def add_continuous_clock_channel(
         self,
