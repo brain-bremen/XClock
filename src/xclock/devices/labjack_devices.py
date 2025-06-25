@@ -48,6 +48,14 @@ class DigIoRegisters:
     def clock_source(self) -> str:
         return f"{self.channel}_EF_CLOCK_SOURCE"
 
+    @property
+    def read_a(self) -> str:
+        return f"{self.channel}_EF_READ_A"
+
+    @property
+    def read_b(self) -> str:
+        return f"{self.channel}_EF_READ_B"
+
 
 class ClockRegisters:
     clock_id: int
@@ -274,6 +282,13 @@ class LabJackT4(DaqDevice):
         self._output_channel = LabJackT4.avilable_output_const_channels[0]
         _set_output_channel(self.handle, self._output_channel, state=0)
 
+    def start_pulsed_clocks(self):
+        # TODO: Run pulsed clocks until done
+        # Use Results are read from the following registers.
+        #   DIO#_EF_READ_A: The number of pulses that have been completed.
+        #   DIO#_EF_READ_B: The target number of pulses.
+        pass
+
     def start_continuous_clocks(self):
         if self.handle is None:
             raise XClockException("Labjack device is not initialized")
@@ -311,6 +326,8 @@ class LabJackT4(DaqDevice):
 
     def add_pulsed_clock_channel(self, sample_rate_hz: int, channel_name: str):
         # TODO: use __configure_pulsed_clock_channel
+        # TODO: How do we know it's done?
+
         pass
 
     def add_continuous_clock_channel(
@@ -422,6 +439,15 @@ class LabJackT4(DaqDevice):
             ljm.cleanInterval(interval_handle)
         logger.warning(f"Timeout waiting for rising edge on {channel_name}")
         return False
+
+
+async def record_incoming_trigger_timestamps(
+    self, channels: list[str] = [], sampling_interval_ms: int = 1
+):
+    # TODO: poll channels in interval and record rising and falling edges
+    # This should potentially be async to be able to run while giving
+    # other commands, e.g. start an ouput clock
+    pass
 
 
 if __name__ == "__main__":
