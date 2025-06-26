@@ -145,7 +145,7 @@ def _configure_channel_to_use_as_clock(
 ):
     registers = DigIoRegisters(channel_name)
 
-    duty_cycle = round(0.25 * roll_value)
+    duty_cycle = round(0.5 * roll_value)
 
     # disable, as we cannot change index if enabled
     ljm.eWriteName(handle, registers.enable_extended_feature, 0)
@@ -170,7 +170,7 @@ def _configure_channel_to_use_as_clock(
         registers.feature_index: feature_index,
         registers.clock_source: clock_id,
         registers.feature_configA: duty_cycle,
-        registers.feature_configB: 0,
+        registers.feature_configB: 1,
         registers.feature_configC: feature_configC,
     }
 
@@ -313,15 +313,16 @@ class LabJackT4(DaqDevice):
                 )
                 for clock in pulsed_clocks
             ]
-            while True:
-                for channel_register in register_names:
+            isDone = [False] * len(register_names)
+            while not all(isDone):
+                for index, channel_register in enumerate(register_names):
                     completed, target = ljm.eReadNames(
                         self.handle,
                         len(channel_register),
                         aNames=channel_register,
                     )
                     if completed >= target:
-                        return
+                        isDone[index] = True
 
     def stop_clocks(self):
         if self.handle is None:
@@ -489,21 +490,24 @@ if __name__ == "__main__":
             clock_tick_rate_hz=100,
             channel_name=available_clock_channels[0],
             enable_clock_now=False,
-            number_of_pulses=10,
+            number_of_pulses=200,
         )
 
         t4.add_clock_channel(
             clock_tick_rate_hz=50,
             channel_name=available_clock_channels[1],
             enable_clock_now=False,
-            number_of_pulses=5,
+            number_of_pulses=50,
         )
 
         print(t4)
 
-        t4.start_clocks()
-        time.sleep(3)
-        t4.stop_clocks()
+        # start clocks and measure time until done
+        start_time = time.time()
+        t4.start_clocks(wait_for_pulsed_clocks_to_finish=True)
+        elapsed = time.time() - start_time
+        print(f"start_clocks returned after {elapsed:.3f} seconds")
+        exit()
 
         input_trigger_channel = t4.get_available_input_start_trigger_channels()[0]
         timeout = 20  # s
