@@ -1,15 +1,17 @@
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
-
+import time
 import labjack.ljm as ljm
 
 from xclock.devices.daq_device import DaqDevice, EdgeType
-from xclock.errors import XClockException
+from xclock.errors import XClockException, XClockValueError
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 class ExtendedFeatureIndices(IntEnum):
@@ -79,13 +81,41 @@ class ClockRegisters:
     def options(self):
         return f"DIO_EF_CLOCK{self.clock_id}_OPTIONS"
 
+    @property
+    def count(self):
+        return f"DIO_EF_CLOCK{self.clock_id}_COUNT"
+
 
 @dataclass
 class ClockChannel:
     channel_name: str
-    clock_source: int
-    enabled: bool
-    sample_rate: int
+    clock_id: int
+    clock_enabled: bool
+    actual_sample_rate_hz: int
+    number_of_pulses: int | None = None
+
+
+def _write_register_dict_to_ljm(handle, config: dict[str, int]):
+    ljm.eWriteNames(
+        handle=handle,
+        numFrames=len(config),
+        aNames=config.keys(),
+        aValues=config.values(),
+    )
+
+
+def _reset_output_channels(handle: int, channel_names: list[str]):
+    ljm.eWriteNames(
+        handle=handle,
+        numFrames=len(channel_names),
+        aNames=channel_names,
+        aValues=[0] * len(channel_names),
+    )
+
+    for channel in channel_names:
+        ljm.eWriteName(handle, DigIoRegisters(channel).enable_extended_feature, 0)
+
+    logger.debug(f"Reset output channels {channel_names} to LOW, no EF")
 
 
 def _enable_clocks(handle: int, clock_ids: list[int] = [0], enable: bool = True):
@@ -97,13 +127,21 @@ def _enable_clocks(handle: int, clock_ids: list[int] = [0], enable: bool = True)
     )
 
 
-def _configure_pulsed_clock_channel(
+def _read_clock_counters(handle: int, clock_ids: list[int]) -> list[int]:
+    return ljm.eReadNames(
+        handle,
+        numFrames=len(clock_ids),
+        aNames=[ClockRegisters(clock_id=id).count for id in clock_ids],
+    )
+
+
+def _configure_channel_to_use_as_clock(
     handle: int,
-    number_of_pulses: int,
-    roll_value: int,
+    roll_value: int,  # = base_clock_frequency // divisor // sample_rate_hz
     channel_name: str,
     clock_id: int,
-    enable: bool = True,
+    number_of_pulses: int | None = None,  # None = continuous
+    enable_clock_now: bool = False,
 ):
     registers = DigIoRegisters(channel_name)
 
@@ -112,78 +150,42 @@ def _configure_pulsed_clock_channel(
     # disable, as we cannot change index if enabled
     ljm.eWriteName(handle, registers.enable_extended_feature, 0)
 
-    # DIO_EF_CLOCK0_ENABLE = 0 // Disable the clock during config
-    _enable_clocks(handle=handle, clock_ids=[clock_id], enable=False)
-
-    config = {
-        registers.clock_source: clock_id,
-        registers.feature_index: ExtendedFeatureIndices.PULSE_OUT_EF_INDEX,
-        registers.feature_configA: duty_cycle,
-        registers.feature_configB: 0,
-        registers.feature_configC: number_of_pulses,
-    }
-
-    if enable:
-        config[registers.enable_extended_feature] = 1
-
-    ljm.eWriteNames(
-        handle=handle,
-        numFrames=len(config),
-        aNames=config.keys(),
-        aValues=config.values(),
-    )
-
-
-def _configure_continuous_clock_channel(
-    handle: int, roll_value: int, channel_name: str, clock_id: int, enable: bool = True
-):
-    """
-    Configures a digital output channel to act as a continuous clock channel (PWM).
-
-    Args:
-
-        handle (int): The LJM handle for the LabJack device.
-        roll_value (int): The roll value for the clock.
-        channel_name (str): The name of the channel to configure (e.g., "DIO6").
-        clock_id (int): The clock ID to use for the channel (1 or 2).
-        enable (bool): Whether to enable the channel after configuration.
-
-    """
-    registers = DigIoRegisters(channel_name)
-
-    duty_cycle = round(0.25 * roll_value)
-
-    # disable, as we cannot change index if enabled
-    ljm.eWriteName(handle, registers.enable_extended_feature, 0)
+    # set channel to LOW to warrant proper signal generation
+    ljm.eWriteName(handle=handle, name=registers.channel, value=0)
 
     # DIO_EF_CLOCK0_ENABLE = 0 // Disable the clock during config
     _enable_clocks(handle=handle, clock_ids=[clock_id], enable=False)
 
+    feature_index = (
+        ExtendedFeatureIndices.PWM_OUT_FEATURE_INDEX
+        if number_of_pulses is None
+        else ExtendedFeatureIndices.PULSE_OUT_EF_INDEX
+    )
+
+    feature_configC = 0
+    if feature_index == ExtendedFeatureIndices.PULSE_OUT_EF_INDEX:
+        feature_configC = number_of_pulses
+
     config = {
-        registers.feature_index: ExtendedFeatureIndices.PWM_OUT_FEATURE_INDEX,
+        registers.feature_index: feature_index,
         registers.clock_source: clock_id,
         registers.feature_configA: duty_cycle,
         registers.feature_configB: 0,
-        registers.feature_configC: 0,
+        registers.feature_configC: feature_configC,
     }
 
-    ljm.eWriteNames(
-        handle=handle,
-        numFrames=len(config),
-        aNames=config.keys(),
-        aValues=config.values(),
-    )
+    _write_register_dict_to_ljm(handle, config)
 
-    # re-enable clock if configured
-    _enable_clocks(handle=handle, clock_ids=[clock_id], enable=enable)
-
-    # enable channel if enalbe_now is True
-    if enable:
-        ljm.eWriteName(handle, registers.enable_extended_feature, 1)
+    if enable_clock_now:
+        config = {
+            registers.enable_extended_feature: 1,
+            ClockRegisters(clock_id=clock_id).enable: 1,
+        }
+        _write_register_dict_to_ljm(handle, config)
 
 
 def _configure_clock(
-    handle, clock_id: int, divisor: int, roll_value: int, enable: bool = True
+    handle, clock_id: int, divisor: int, roll_value: int, enable: bool = False
 ):
     register_names = ClockRegisters(clock_id)
 
@@ -198,21 +200,21 @@ def _configure_clock(
 
     if enable:
         clock_config[register_names.enable] = int(enable)
-    # set to configured state
-    ljm.eWriteName(handle, register_names.enable, int(enable))
-    ljm.eWriteNames(
-        handle=handle,
-        numFrames=len(clock_config),
-        aNames=clock_config.keys(),
-        aValues=clock_config.values(),
-    )
+
+    _write_register_dict_to_ljm(handle, clock_config)
 
 
-def _set_output_channel(handle: int, channel_name: str, state: int):
+def _set_output_channels_state(handle: int, channel_names: list[str], state: int):
     # read previous value to make sure its configured as digital
 
-    ljm.eWriteName(handle, channel_name, state)
-    logger.debug(f"Set output channel {channel_name} to {state}")
+    # ljm.eWriteName(handle, channel_names, state)
+    ljm.eWriteNames(
+        handle=handle,
+        numFrames=len(channel_names),
+        aNames=channel_names,
+        aValues=[state] * len(channel_names),
+    )
+    logger.debug(f"Set output channels {channel_names} to {state}")
 
 
 class LabJackT4(DaqDevice):
@@ -250,7 +252,7 @@ class LabJackT4(DaqDevice):
     _used_clock_channel_names: set[str] = set()
     _unused_clock_channel_names: set[str]
     _clock_channels: list[ClockChannel] = []
-    _output_channel: str  # channel that is ON during clock output
+    _clock_on_indicator_channel: str  # channel that is ON during clock output
 
     def __init__(self):
         try:
@@ -268,8 +270,16 @@ class LabJackT4(DaqDevice):
         connectionTypeString = (
             "USB" if self.connectionType == ljm.constants.ctUSB else "Ethernet"
         )
-        logger.debug(
+        logger.info(
             f"Opened LabJack T4 with serial number {self.serialNumber} via {connectionTypeString}"
+        )
+
+        self._clock_on_indicator_channel = LabJackT4.avilable_output_const_channels[0]
+
+        _reset_output_channels(
+            self.handle,
+            list(self.get_available_output_clock_channels())
+            + [self._clock_on_indicator_channel],
         )
 
         # disable clock0 as its mutually exclusive with CLOCK1 and CLOCK2
@@ -279,62 +289,69 @@ class LabJackT4(DaqDevice):
             LabJackT4.available_output_clock_channels
         )
 
-        self._output_channel = LabJackT4.avilable_output_const_channels[0]
-        _set_output_channel(self.handle, self._output_channel, state=0)
-
-    def start_pulsed_clocks(self):
-        # TODO: Run pulsed clocks until done
-        # Use Results are read from the following registers.
-        #   DIO#_EF_READ_A: The number of pulses that have been completed.
-        #   DIO#_EF_READ_B: The target number of pulses.
-        pass
-
-    def start_continuous_clocks(self):
+    def start_clocks(self, wait_for_pulsed_clocks_to_finish: bool = True):
         if self.handle is None:
             raise XClockException("Labjack device is not initialized")
 
-        # enable channels
-        config = {DigIoRegisters(self._output_channel).channel: 1}
+        config = {DigIoRegisters(self._clock_on_indicator_channel).channel: 1}
         for channel in self._clock_channels:
-            key = DigIoRegisters(channel.channel_name).enable_extended_feature
-            config[key] = 1
+            config[DigIoRegisters(channel.channel_name).enable_extended_feature] = 1
+            config[ClockRegisters(channel.clock_id).enable] = 1
 
-        ljm.eWriteNames(
-            handle=self.handle,
-            numFrames=len(config),
-            aNames=config.keys(),
-            aValues=config.values(),
-        )
+        _write_register_dict_to_ljm(handle=self.handle, config=config)
 
-        # TODO: Should this be done before enabling the channels or after? i.e., what actually starts the clock
+        pulsed_clocks = [
+            channel
+            for channel in self._clock_channels
+            if channel.number_of_pulses is not None
+        ]
+        if wait_for_pulsed_clocks_to_finish and len(pulsed_clocks) > 0:
+            register_names = [
+                (
+                    DigIoRegisters(clock.channel_name).read_a,
+                    DigIoRegisters(clock.channel_name).read_b,
+                )
+                for clock in pulsed_clocks
+            ]
+            while True:
+                for channel_register in register_names:
+                    completed, target = ljm.eReadNames(
+                        self.handle,
+                        len(channel_register),
+                        aNames=channel_register,
+                    )
+                    if completed >= target:
+                        return
 
-        # Enable all clocks at the same time
-        _enable_clocks(
-            handle=self.handle,
-            clock_ids=[channel.clock_source for channel in self._clock_channels],
-            enable=True,
-        )
-
-    def stop_continuous_clocks(self):
+    def stop_clocks(self):
         if self.handle is None:
             raise XClockException("Labjack device is not initialized")
-        _enable_clocks(
-            handle=self.handle,
-            clock_ids=[channel.clock_source for channel in self._clock_channels],
-            enable=False,
+
+        registers = (
+            [
+                ClockRegisters(channel.clock_id).enable
+                for channel in self._clock_channels
+            ]
+            + [
+                DigIoRegisters(channel.channel_name).enable_extended_feature
+                for channel in self._clock_channels
+            ]
+            + [channel.channel_name for channel in self._clock_channels]
+        )
+        registers.append(self._clock_on_indicator_channel)
+        ljm.eWriteNames(
+            self.handle,
+            numFrames=len(registers),
+            aNames=registers,
+            aValues=[0] * len(registers),
         )
 
-    def add_pulsed_clock_channel(self, sample_rate_hz: int, channel_name: str):
-        # TODO: use __configure_pulsed_clock_channel
-        # TODO: How do we know it's done?
-
-        pass
-
-    def add_continuous_clock_channel(
+    def add_clock_channel(
         self,
-        sample_rate_hz: int,
+        clock_tick_rate_hz: int | float,
         channel_name: str | None = None,
-        enable_now: bool = True,
+        number_of_pulses: int | None = None,  # None: continuous output
+        enable_clock_now: bool = False,
         # on_time=None, TODO: Implement on_time and off_time via duty_cycle
         # off_time=None,
     ):
@@ -348,51 +365,55 @@ class LabJackT4(DaqDevice):
         # TODO: Check if sample rate is within limits
         # if sample_rate > self.base_clock_frequency//self.divisor:
         #     raise ValueError(
-        #         f"Sample rate {sample_rate} exceeds base clock frequency {self.base_clock_frequency}"
+        #         f"Requested clock rate {sample_rate} exceeds base clock frequency {self.base_clock_frequency}"
         #     )
 
         if channel_name is None:
             channel_name = self._unused_clock_channel_names.pop()
 
-        if channel_name not in LabJackT4.available_output_clock_channels:
-            raise XClockException(
-                "Invalid clock channel name {channel_name}. Must be in {LabJackT4.available_clock_channels}"
+        if channel_name not in self.get_available_output_clock_channels():
+            raise XClockValueError(
+                f"Invalid clock channel name {channel_name}. Must be in {self.get_available_output_clock_channels()}"
             )
 
         clock_id = (
             len(self._used_clock_channel_names) + 1
         )  # CLOCK1 and CLOCK2 are used for PWM
-        roll_value = self.base_clock_frequency // self.divisor // sample_rate_hz
+        roll_value = (
+            self.base_clock_frequency // self.divisor // int(clock_tick_rate_hz)
+        )
         _configure_clock(
             handle=self.handle,
             clock_id=clock_id,
             divisor=self.divisor,
             roll_value=roll_value,
-            enable=enable_now,
         )
         actual_sample_rate = self.base_clock_frequency // self.divisor // roll_value
 
-        _configure_continuous_clock_channel(
+        _configure_channel_to_use_as_clock(
             handle=self.handle,
             roll_value=roll_value,
             channel_name=channel_name,
             clock_id=clock_id,
-            enable=enable_now,
+            enable_clock_now=enable_clock_now,
+            number_of_pulses=number_of_pulses,
         )
 
         self._used_clock_channel_names.add(channel_name)
         logger.debug(
-            f"Added clock channel {channel_name} with sample rate {sample_rate_hz}"
+            f"Added clock channel {channel_name} with sample rate {clock_tick_rate_hz}"
         )
 
         self._clock_channels.append(
             ClockChannel(
                 channel_name=channel_name,
-                clock_source=clock_id,
-                enabled=enable_now,
-                sample_rate=actual_sample_rate,
+                clock_id=clock_id,
+                clock_enabled=enable_clock_now,
+                actual_sample_rate_hz=actual_sample_rate,
+                number_of_pulses=number_of_pulses,
             )
         )
+        return self._clock_channels[-1]
 
     def remove_clock_channel(self, channel_name: str):
         pass
@@ -401,10 +422,20 @@ class LabJackT4(DaqDevice):
         out = f"LabJack T4 with handle {self.handle}:\n"
         for channel in self._clock_channels:
             out += f"\t- {str(channel)}\n"
+        out += f"\t- Clock On Indicator: {self._clock_on_indicator_channel}"
         return out
 
     def __del__(self):
         if self.handle:
+            channels_to_disable = []
+            channels_to_disable.extend([ch.channel_name for ch in self._clock_channels])
+            channels_to_disable.extend([self._clock_on_indicator_channel])
+            ljm.eWriteNames(
+                handle=self.handle,
+                numFrames=len(channels_to_disable),
+                aNames=channels_to_disable,
+                aValues=[0] * len(channels_to_disable),
+            )
             ljm.close(self.handle)
 
     def wait_for_trigger_edge(
@@ -418,9 +449,7 @@ class LabJackT4(DaqDevice):
         Returns True if a rising edge is detected within the timeout, else False.
         Uses LJM_WaitForNextInterval for precise polling.
         """
-        import time
 
-        # TODO: This is a ChatGPT solution and can be improved by using
         interval_us = 1000  # 1 ms
         register = channel_name
         start_time = time.time()
@@ -456,19 +485,25 @@ if __name__ == "__main__":
         t4 = LabJackT4()
         available_clock_channels = t4.get_available_output_clock_channels()
 
-        t4.add_continuous_clock_channel(
-            sample_rate_hz=100,
+        t4.add_clock_channel(
+            clock_tick_rate_hz=100,
             channel_name=available_clock_channels[0],
-            enable_now=False,
+            enable_clock_now=False,
+            number_of_pulses=10,
         )
 
-        t4.add_continuous_clock_channel(
-            sample_rate_hz=50,
+        t4.add_clock_channel(
+            clock_tick_rate_hz=50,
             channel_name=available_clock_channels[1],
-            enable_now=False,
+            enable_clock_now=False,
+            number_of_pulses=5,
         )
 
         print(t4)
+
+        t4.start_clocks()
+        time.sleep(3)
+        t4.stop_clocks()
 
         input_trigger_channel = t4.get_available_input_start_trigger_channels()[0]
         timeout = 20  # s
@@ -478,7 +513,7 @@ if __name__ == "__main__":
         )
         if t4.wait_for_trigger_edge(input_trigger_channel, timeout_s=timeout):
             logger.debug(f"Detected input trigger on channel {input_trigger_channel}")
-            t4.start_continuous_clocks()
+            t4.start_clocks()
 
         else:
             logger.debug("No input detected")
