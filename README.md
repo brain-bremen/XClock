@@ -1,12 +1,19 @@
 # XClock - Tools for synchronizing eXperimental Clocks
 
+![](resources/logo_with_clock_signals.png)
+
+
 XClock is a Python package designed to help synchronize data acquisition clocks in
 experimental setups, particularly for neuroscience and behavioral experiments. It provides
 tools to generate precise clock signals using various data acquisition (DAQ) devices, such
 as the [LabJack T4](https://labjack.com/products/labjack-t4). 
 
 XClock allows you to output **multiple clock frequencies simultaneously**, all synchronized to
-the same internal clock source to ensure precise timing alignment.
+the same internal clock source to ensure precise timing alignment. 
+
+*Note*: This is not the [clock for the original X Window System](https://www.x.org/archive/X11R7.6/doc/man/man1/xclock.1.xhtml)
+
+
 
 ## Installation
 
