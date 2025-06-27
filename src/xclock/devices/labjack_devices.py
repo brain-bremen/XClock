@@ -363,11 +363,14 @@ class LabJackT4(DaqDevice):
                 "No more clock channels available. Used channels: {self._used_clock_channels}"
             )
 
-        # TODO: Check if sample rate is within limits
-        # if sample_rate > self.base_clock_frequency//self.divisor:
-        #     raise ValueError(
-        #         f"Requested clock rate {sample_rate} exceeds base clock frequency {self.base_clock_frequency}"
-        #     )
+        f_min = self.base_clock_frequency / self.divisor / 2**16
+        f_max = self.base_clock_frequency / self.divisor / 2
+
+        if clock_tick_rate_hz <= f_min or clock_tick_rate_hz >= f_max:
+            raise XClockValueError(
+                f"Clock tick rate {clock_tick_rate_hz} Hz is out of range. "
+                f"Must be between {f_min} and {f_max} Hz."
+            )
 
         if channel_name is None:
             channel_name = self._unused_clock_channel_names.pop()
