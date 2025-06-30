@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 from dataclasses import dataclass
+from pathlib import Path
 
 
 class EdgeType(Enum):
@@ -57,6 +58,18 @@ class ClockDaqDevice(ABC):
 
     @abstractmethod
     def start_clocks(self, wait_for_pulsed_clocks_to_finish: bool = True):
+        pass
+
+    @abstractmethod
+    def start_clocks_and_record_edge_timestamps(
+        self,
+        duration_s: float,  #
+        extra_channels: list[str] = [],
+        wait_for_pulsed_clocks_to_finish: bool = True,  # if there are pulsed clocks, extend wait duration until pulsed clocks are finished
+        filename: Path
+        | str
+        | None = None,  # if no filename given, will be generated automatically in ~/Documents/XClock
+    ):
         pass
 
     @abstractmethod

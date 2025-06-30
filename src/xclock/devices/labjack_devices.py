@@ -9,7 +9,6 @@ from pathlib import Path
 import numpy as np
 import labjack.ljm as ljm
 
-from xclock import DEFAULT_OUTPUT_DIRECTORY
 from xclock.devices.daq_device import ClockChannel, ClockDaqDevice, EdgeType
 from xclock.errors import XClockException, XClockValueError
 
@@ -20,6 +19,10 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 SKIP_VALUE = -9999.0
+DEFAULT_OUTPUT_DIRECTORY = os.path.join(os.path.expanduser("~"), "Documents", "XClock")
+
+if not os.path.exists(DEFAULT_OUTPUT_DIRECTORY):
+    os.makedirs(DEFAULT_OUTPUT_DIRECTORY, exist_ok=True)
 
 
 class ExtendedFeatureIndices(IntEnum):
@@ -294,7 +297,11 @@ class LabJackT4(ClockDaqDevice):
             LabJackT4.available_output_clock_channels
         )
 
-    def start_clocks(self, wait_for_pulsed_clocks_to_finish: bool = True):
+    def start_clocks(
+        self,
+        wait_for_pulsed_clocks_to_finish: bool = True,
+        maximum_wait_duration_s: float = 8 * 60 * 60.0,  # eight hours
+    ):
         if self.handle is None:
             raise XClockException("Labjack device is not initialized")
 
@@ -325,7 +332,8 @@ class LabJackT4(ClockDaqDevice):
                 for clock in pulsed_clocks
             ]
             isDone = [False] * len(register_names)
-            while not all(isDone):
+            t_start = time.time()
+            while not all(isDone) and (time.time() - t_start) < maximum_wait_duration_s:
                 for index, channel_register in enumerate(register_names):
                     completed, target = ljm.eReadNames(
                         self.handle,
@@ -437,6 +445,40 @@ class LabJackT4(ClockDaqDevice):
     def remove_clock_channel(self, channel_name: str):
         pass
 
+    def start_clocks_and_record_edge_timestamps(
+        self,
+        duration_s: float,
+        wait_for_pulsed_clocks_to_finish: bool = True,
+        extra_channels: list[
+            str
+        ] = [],  # record edge timestamps also on these channels in addition to clocks
+        filename: Path | str | None = None,
+    ):
+        if self.handle is None:
+            raise XClockException("Labjack device is not initialized")
+        if len(self._clock_channels) == 0:
+            raise XClockException(
+                "No clock channels configured. Use add_clock_channel() first"
+            )
+
+        streamer = LabJackEdgeStreamer(
+            self,
+            list(self._used_clock_channel_names) + extra_channels,
+            scan_rate_hz=1000,
+            filename=filename,
+        )
+
+        t_start = time.time()
+        streamer.start_streaming()
+        while time.time() - t_start < duration_s:
+            self.start_clocks(
+                wait_for_pulsed_clocks_to_finish=wait_for_pulsed_clocks_to_finish
+            )
+
+        # Stop everything
+        self.stop_clocks()
+        streamer.stop_streaming()
+
     def __str__(self):
         out = f"LabJack T4 with handle {self.handle}:\n"
         for channel in self._clock_channels:
@@ -527,14 +569,17 @@ class LabJackEdgeStreamer:
         self.number_of_detected_edges = 0
 
         if filename is None:
-            self.filename = os.path.join(
+            filename = os.path.join(
                 DEFAULT_OUTPUT_DIRECTORY, f"labjack_stream_{int(time.time())}.csv"
             )
+
+        self.filename = filename
         self._file = open(self.filename, "w", newline="")
 
         # Threading control
         self.streaming_thread: threading.Thread | None = None
         self.stop_event = threading.Event()
+        self.ready_event = threading.Event()
 
         self._start_streaming_timestamp = int(-1)
 
@@ -559,6 +604,9 @@ class LabJackEdgeStreamer:
             target=self._streaming_loop, daemon=True
         )
         self.streaming_thread.start()
+        result = self.ready_event.wait(5)
+        if not result:
+            raise XClockException(f"Could not start edge detector thread")
         logger.info(f"Background streaming started at {self.scan_rate} Hz")
 
     def stop_streaming(self):
@@ -596,7 +644,7 @@ class LabJackEdgeStreamer:
                 ljm.eReadName(self.t4.handle, "STREAM_START_TIME_STAMP")
             )
             self._skipped_samples = 0
-
+            self.ready_event.set()
             while not self.stop_event.is_set():
                 aData, deviceScanBacklog, ljmScanBacklog = ljm.eStreamRead(
                     self.t4.handle
@@ -617,7 +665,7 @@ class LabJackEdgeStreamer:
                 data[:, -2] += data[:, -1] << 16
                 data = data[:, :-1]  # Drop last column
 
-                data[:, -1] -= self._start_streaming_timestamp
+                # data[:, -1] -= self._start_streaming_timestamp
 
                 edge_timestamps = _detect_edges_along_columns(
                     data,

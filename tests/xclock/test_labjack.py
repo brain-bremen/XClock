@@ -1,6 +1,7 @@
 import pytest
 from xclock.errors import XClockException, XClockValueError
 from xclock.devices import ClockDaqDevice
+from xclock.devices.labjack_devices import LabJackEdgeStreamer
 
 # Try to instantiate the hardware
 try:
@@ -102,3 +103,49 @@ def test_start_pulsed_clocks_and_wait(device: ClockDaqDevice):
     assert not clock_channel.clock_enabled
 
     device.clear_clocks()
+
+
+@pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
+def test_streaming(device: ClockDaqDevice):
+    available_clock_channels = device.get_available_output_clock_channels()
+    assert len(available_clock_channels) > 0
+    device.clear_clocks()
+
+    # Add a pulsed clock channel
+    clock_channel = device.add_clock_channel(
+        clock_tick_rate_hz=100,
+        channel_name=available_clock_channels[0],
+        number_of_pulses=10,
+        enable_clock_now=False,
+    )
+    duration = 5  # s
+    device.start_clocks_and_record_edge_timestamps(
+        duration_s=duration, wait_for_pulsed_clocks_to_finish=False, filename="foo.csv"
+    )
+
+
+def test_streaming_with_separate_streamer(device: ClockDaqDevice):
+    # Setup LabJack
+
+    number_of_pulses = (200, 90)
+    device.add_clock_channel(100, "DIO6", number_of_pulses=200)
+    # device.add_clock_channel(30, "DIO7", number_of_pulses=90)
+
+    channel_names = ["DIO6", "DIO7"]
+    channel_names = ["DIO6"]
+    streamer = LabJackEdgeStreamer(t4, channel_names, scan_rate_hz=1000)
+
+    streamer.start_streaming()
+    t4.start_clocks()
+
+    # Do other work...
+    import time
+
+    time.sleep(5)
+
+    # Stop everything
+    t4.stop_clocks()
+    time.sleep(0.1)
+    streamer.stop_streaming()
+
+    assert streamer.number_of_detected_edges == 200
