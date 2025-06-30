@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
+from dataclasses import dataclass
 
 
 class EdgeType(Enum):
@@ -7,7 +8,16 @@ class EdgeType(Enum):
     FALLING = "falling"
 
 
-class DaqDevice(ABC):
+@dataclass
+class ClockChannel:
+    channel_name: str
+    clock_id: int
+    clock_enabled: bool
+    actual_sample_rate_hz: int
+    number_of_pulses: int | None = None
+
+
+class ClockDaqDevice(ABC):
     @staticmethod
     @abstractmethod
     def get_available_input_start_trigger_channels() -> tuple[str, ...]:
@@ -19,12 +29,21 @@ class DaqDevice(ABC):
         pass
 
     @abstractmethod
+    def get_added_clock_channels(self) -> list[ClockChannel]:
+        pass
+
+    @abstractmethod
+    def get_unused_clock_channel_names(self) -> list[str]:
+        pass
+
+    @abstractmethod
     def add_clock_channel(
         self,
-        sample_rate_hz: int,
+        clock_tick_rate_hz: int | float,
         channel_name: str | None = None,
-        enable_now: bool = True,
-    ):
+        number_of_pulses: int | None = None,  # None: continuous output
+        enable_clock_now: bool = False,
+    ) -> ClockChannel:
         pass
 
     @abstractmethod
@@ -34,4 +53,16 @@ class DaqDevice(ABC):
         timeout_s: float = 5.0,
         edge_type: EdgeType = EdgeType.RISING,
     ) -> bool:
+        pass
+
+    @abstractmethod
+    def start_clocks(self, wait_for_pulsed_clocks_to_finish: bool = True):
+        pass
+
+    @abstractmethod
+    def stop_clocks(self):
+        pass
+
+    @abstractmethod
+    def clear_clocks(self):
         pass

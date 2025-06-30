@@ -1,11 +1,11 @@
-from xclock.devices.daq_device import DaqDevice, EdgeType
+from xclock.devices.daq_device import ClockDaqDevice, EdgeType
 
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-class DummyDaqDevice(DaqDevice):
+class DummyDaqDevice(ClockDaqDevice):
     @staticmethod
     def get_available_input_start_trigger_channels() -> tuple[str, ...]:
         return ("FOOIO4", "FOOIO5")

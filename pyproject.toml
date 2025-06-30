@@ -22,3 +22,13 @@ package = true
 
 [project.scripts]
 xclock = "cli.main:main"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.10.3",
+    "pytest>=8.4.1",
+]

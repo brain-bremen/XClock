@@ -1,10 +1,9 @@
 import logging
-from dataclasses import dataclass
 from enum import IntEnum
 import time
 import labjack.ljm as ljm
-
-from xclock.devices.daq_device import DaqDevice, EdgeType
+import copy
+from xclock.devices.daq_device import ClockDaqDevice, EdgeType, ClockChannel
 from xclock.errors import XClockException, XClockValueError
 
 logging.basicConfig(
@@ -84,15 +83,6 @@ class ClockRegisters:
     @property
     def count(self):
         return f"DIO_EF_CLOCK{self.clock_id}_COUNT"
-
-
-@dataclass
-class ClockChannel:
-    channel_name: str
-    clock_id: int
-    clock_enabled: bool
-    actual_sample_rate_hz: int
-    number_of_pulses: int | None = None
 
 
 def _write_register_dict_to_ljm(handle, config: dict[str, int]):
@@ -217,7 +207,7 @@ def _set_output_channels_state(handle: int, channel_names: list[str], state: int
     logger.debug(f"Set output channels {channel_names} to {state}")
 
 
-class LabJackT4(DaqDevice):
+class LabJackT4(ClockDaqDevice):
     """LabJack T4 device class
 
     Supports two clock signals on FIO6/DIO6 and FIO7/DIO7. The base clock
@@ -231,6 +221,12 @@ class LabJackT4(DaqDevice):
     @staticmethod
     def get_available_output_clock_channels():
         return LabJackT4.available_output_clock_channels
+
+    def get_added_clock_channels(self) -> list[ClockChannel]:
+        return copy.copy(self._clock_channels)
+
+    def get_unused_clock_channel_names(self) -> list[str]:
+        return list(self._unused_clock_channel_names)
 
     avilable_output_const_channels = ("DIO5",)
 
@@ -260,7 +256,7 @@ class LabJackT4(DaqDevice):
         except Exception as e:
             self.handle = None
             logger.error(f"Failed to open LabJack T4: {str(e)}")
-            exit()
+            raise XClockException(f"{e}")
 
         (self.deviceType, self.connectionType, self.serialNumber, _, _, _) = (
             ljm.getHandleInfo(self.handle)
@@ -293,10 +289,16 @@ class LabJackT4(DaqDevice):
         if self.handle is None:
             raise XClockException("Labjack device is not initialized")
 
+        if len(self._clock_channels) == 0:
+            raise XClockException(
+                "No clock channels configured. Use add_clock_channel() first"
+            )
+
         config = {DigIoRegisters(self._clock_on_indicator_channel).channel: 1}
         for channel in self._clock_channels:
             config[DigIoRegisters(channel.channel_name).enable_extended_feature] = 1
             config[ClockRegisters(channel.clock_id).enable] = 1
+            channel.clock_enabled = True
 
         _write_register_dict_to_ljm(handle=self.handle, config=config)
 
@@ -346,6 +348,8 @@ class LabJackT4(DaqDevice):
             aNames=registers,
             aValues=[0] * len(registers),
         )
+        for clock in self._clock_channels:
+            clock.clock_enabled = False
 
     def add_clock_channel(
         self,
@@ -353,9 +357,7 @@ class LabJackT4(DaqDevice):
         channel_name: str | None = None,
         number_of_pulses: int | None = None,  # None: continuous output
         enable_clock_now: bool = False,
-        # on_time=None, TODO: Implement on_time and off_time via duty_cycle
-        # off_time=None,
-    ):
+    ) -> ClockChannel:
         if self.handle is None:
             raise XClockException("Labjack device is not initialized")
         if len(self._unused_clock_channel_names) == 0:
@@ -374,6 +376,8 @@ class LabJackT4(DaqDevice):
 
         if channel_name is None:
             channel_name = self._unused_clock_channel_names.pop()
+
+        self._unused_clock_channel_names.discard(channel_name)
 
         if channel_name not in self.get_available_output_clock_channels():
             raise XClockValueError(
@@ -472,6 +476,17 @@ class LabJackT4(DaqDevice):
             ljm.cleanInterval(interval_handle)
         logger.warning(f"Timeout waiting for rising edge on {channel_name}")
         return False
+
+    def clear_clocks(self):
+        if self.handle is None:
+            raise XClockException("Labjack device is not initialized")
+
+        self.stop_clocks()
+        self._clock_channels[:] = []
+        self._used_clock_channel_names.clear()
+        self._unused_clock_channel_names = set(
+            LabJackT4.available_output_clock_channels
+        )
 
 
 async def record_incoming_trigger_timestamps(
