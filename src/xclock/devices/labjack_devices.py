@@ -325,6 +325,8 @@ class LabJackT4(ClockDaqDevice):
                     )
                     if completed >= target:
                         isDone[index] = True
+            for clock in pulsed_clocks:
+                clock.clock_enabled = False
 
     def stop_clocks(self):
         if self.handle is None:

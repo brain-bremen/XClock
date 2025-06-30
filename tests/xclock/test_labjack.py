@@ -50,6 +50,10 @@ def test_add_clock_channel(device: ClockDaqDevice):
     ] == list(available_clock_channels)
     assert len(device.get_unused_clock_channel_names()) == 0
 
+    device.clear_clocks()
+
+    assert len(device.get_added_clock_channels()) == 0
+
 
 @pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
 def test_start_clocks(device: ClockDaqDevice):
@@ -72,3 +76,29 @@ def test_start_clocks(device: ClockDaqDevice):
 
     # Check if the clock is stopped
     assert not clock_channel.clock_enabled
+
+    device.clear_clocks()
+
+
+@pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
+def test_start_pulsed_clocks_and_wait(device: ClockDaqDevice):
+    available_clock_channels = device.get_available_output_clock_channels()
+    assert len(available_clock_channels) > 0
+
+    device.clear_clocks()
+
+    # Add a pulsed clock channel
+    clock_channel = device.add_clock_channel(
+        clock_tick_rate_hz=100,
+        channel_name=available_clock_channels[0],
+        number_of_pulses=10,
+        enable_clock_now=False,
+    )
+
+    # Start the clock
+    device.start_clocks(wait_for_pulsed_clocks_to_finish=True)
+
+    # Check if the clock is stopped
+    assert not clock_channel.clock_enabled
+
+    device.clear_clocks()
