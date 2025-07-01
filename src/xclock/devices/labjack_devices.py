@@ -258,7 +258,7 @@ class LabJackT4(ClockDaqDevice):
     def get_available_input_start_trigger_channels() -> tuple[str, ...]:
         return LabJackT4.availabile_input_trigger_channels
 
-    base_clock_frequency = 80_000_000  # 80 MHz
+    base_clock_frequency_hz = 80_000_000  # 80 MHz
     divisor = 256
 
     handle: int | None = None
@@ -448,8 +448,8 @@ class LabJackT4(ClockDaqDevice):
                 "No more clock channels available. Used channels: {self._used_clock_channels}"
             )
 
-        f_min = self.base_clock_frequency / self.divisor / 2**16
-        f_max = self.base_clock_frequency / self.divisor / 2
+        f_min = self.base_clock_frequency_hz / self.divisor / 2**16
+        f_max = self.base_clock_frequency_hz / self.divisor / 2
 
         if clock_tick_rate_hz <= f_min or clock_tick_rate_hz >= f_max:
             raise XClockValueError(
@@ -471,7 +471,7 @@ class LabJackT4(ClockDaqDevice):
             len(self._used_clock_channel_names) + 1
         )  # CLOCK1 and CLOCK2 are used for PWM
         roll_value = (
-            self.base_clock_frequency // self.divisor // int(clock_tick_rate_hz)
+            self.base_clock_frequency_hz // self.divisor // int(clock_tick_rate_hz)
         )
         _configure_clock(
             handle=self.handle,
@@ -479,7 +479,7 @@ class LabJackT4(ClockDaqDevice):
             divisor=self.divisor,
             roll_value=roll_value,
         )
-        actual_sample_rate = self.base_clock_frequency // self.divisor // roll_value
+        actual_sample_rate = self.base_clock_frequency_hz // self.divisor // roll_value
 
         _configure_channel_to_use_as_clock(
             handle=self.handle,
@@ -526,8 +526,9 @@ class LabJackT4(ClockDaqDevice):
             )
 
         streamer = LabJackEdgeStreamer(
-            self,
+            self.handle,
             list(self._clock_copy_channel_names) + extra_channels,
+            internal_clock_sampling_rate_hz=self.base_clock_frequency_hz // 2,
             scan_rate_hz=10000,
             filename=filename,
         )
@@ -612,22 +613,27 @@ class LabJackEdgeStreamer:
     indices. The data is saved to a CSV file in ~/Documents/XClock for later analysis.
     """
 
-    t4: LabJackT4
+    handle: int
     number_of_detected_edges: int
     internal_clock_sampling_rate_hz: int
     filename: Path | str
 
     def __init__(
-        self, t4_device: LabJackT4, channel_names, scan_rate_hz=1000, filename=None
+        self,
+        handle: int,
+        channel_names,
+        internal_clock_sampling_rate_hz,
+        scan_rate_hz=1000,
+        filename=None,
     ):
-        self.t4 = t4_device
+        self.handle = handle
         self.channel_names = channel_names.copy()
         self.number_of_sampled_channels = len(channel_names)
         self.channel_names.extend(["CORE_TIMER", "STREAM_DATA_CAPTURE_16"])
 
         self.scan_rate = scan_rate_hz
         self.scans_per_read = int(scan_rate_hz / 2)
-        self.internal_clock_sampling_rate_hz = t4_device.base_clock_frequency // 2
+        self.internal_clock_sampling_rate_hz = internal_clock_sampling_rate_hz
         self.number_of_detected_edges = 0
 
         if filename is None:
@@ -648,7 +654,7 @@ class LabJackEdgeStreamer:
         self._last_row = np.zeros(shape=(1, self.number_of_sampled_channels + 1))
 
         try:
-            ljm.eStreamStop(self.t4.handle)
+            ljm.eStreamStop(self.handle)
         except Exception as e:
             pass
 
@@ -693,7 +699,7 @@ class LabJackEdgeStreamer:
 
             aNames = ["STREAM_SETTLING_US", "STREAM_RESOLUTION_INDEX"]
             aValues = [0, 0]
-            ljm.eWriteNames(self.t4.handle, len(aNames), aNames, aValues)
+            ljm.eWriteNames(self.handle, len(aNames), aNames, aValues)
 
             # --- IMPORTANT NOTE ---
             # When you add a digital channel (e.g., DIO#) to the scan list for streaming,
@@ -708,7 +714,7 @@ class LabJackEdgeStreamer:
             #   - You explicitly set the state before streaming if needed
 
             ljm.eStreamStart(
-                handle=self.t4.handle,
+                handle=self.handle,
                 scansPerRead=self.scans_per_read,
                 scanRate=self.scan_rate,
                 aScanList=aScanList,
@@ -716,14 +722,12 @@ class LabJackEdgeStreamer:
             )
 
             self._start_streaming_timestamp = int(
-                ljm.eReadName(self.t4.handle, "STREAM_START_TIME_STAMP")
+                ljm.eReadName(self.handle, "STREAM_START_TIME_STAMP")
             )
             self._skipped_samples = 0
             self.ready_event.set()
             while not self.stop_event.is_set():
-                aData, deviceScanBacklog, ljmScanBacklog = ljm.eStreamRead(
-                    self.t4.handle
-                )
+                aData, deviceScanBacklog, ljmScanBacklog = ljm.eStreamRead(self.handle)
 
                 logger.debug(
                     f"Read {len(aData)} data points from stream backlog={deviceScanBacklog}/{ljmScanBacklog} (device/host)"
@@ -770,7 +774,7 @@ class LabJackEdgeStreamer:
         finally:
             # Clean up
             try:
-                ljm.eStreamStop(self.t4.handle)
+                ljm.eStreamStop(self.handle)
             except:
                 pass
 

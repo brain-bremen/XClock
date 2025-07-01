@@ -185,7 +185,12 @@ def test_streaming(device: ClockDaqDevice, tmp_path):
 @pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
 def test_streaming_no_clocks(device: ClockDaqDevice):
     channel_names = ["DIO6"]
-    streamer = LabJackEdgeStreamer(t4, channel_names, scan_rate_hz=1000)
+    streamer = LabJackEdgeStreamer(
+        device.handle,
+        channel_names,
+        device.base_clock_frequency_hz,
+        scan_rate_hz=1000,
+    )
 
     streamer.start_streaming()
     assert streamer.is_streaming()
@@ -204,7 +209,9 @@ def test_streaming_with_separate_streamer(device: ClockDaqDevice):
     device.add_clock_channel(100, "DIO6", number_of_pulses=number_of_pulses)
 
     channel_names = ["EIO6"]
-    streamer = LabJackEdgeStreamer(t4, channel_names, scan_rate_hz=1000)
+    streamer = LabJackEdgeStreamer(
+        device.handle, channel_names, device.base_clock_frequency_hz, scan_rate_hz=1000
+    )
 
     streamer.start_streaming()
     assert streamer.is_streaming()

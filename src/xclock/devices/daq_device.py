@@ -19,6 +19,9 @@ class ClockChannel:
 
 
 class ClockDaqDevice(ABC):
+    handle: int
+    base_clock_frequency_hz: int | float
+
     @staticmethod
     @abstractmethod
     def get_available_input_start_trigger_channels() -> tuple[str, ...]:
