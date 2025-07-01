@@ -320,7 +320,7 @@ class LabJackT4(ClockDaqDevice):
 
     def start_clocks(
         self,
-        wait_for_pulsed_clocks_to_finish: bool = True,  # return before timeout if pulsed clocks are finished
+        wait_for_pulsed_clocks_to_finish: bool = False,  # return before timeout if pulsed clocks are finished
         timeout_duration_s: float = 0.0,  # return after timeout if timeout > 0
     ):
         """
@@ -408,6 +408,8 @@ class LabJackT4(ClockDaqDevice):
                 ljm.waitForNextInterval(interval_handle)
             finally:
                 ljm.cleanInterval(interval_handle)
+
+            self.stop_clocks()
 
     def stop_clocks(self):
         if self.handle is None:
