@@ -19,7 +19,7 @@ behavioral monitoring or two-photon imaging.
 *Note*: This Python project is not the [clock for the original X Window
 System](https://www.x.org/archive/X11R7.6/doc/man/man1/xclock.1.xhtml).
 
-
+[![Python Tests](https://github.com/brain-bremen/XClock/actions/workflows/python-tests.yml/badge.svg)](https://github.com/brain-bremen/XClock/actions/workflows/python-tests.yml)
 
 ## Installation
 
