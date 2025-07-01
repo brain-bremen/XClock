@@ -2,6 +2,7 @@ import argparse
 import logging
 import sys
 import time
+from pathlib import Path
 from typing import List, Optional
 
 
@@ -19,9 +20,27 @@ DEVICE_MAP = {
 def setup_logging(verbose: bool) -> None:
     """Setup logging configuration."""
     level = logging.DEBUG if verbose else logging.INFO
+
+    # Force reconfigure logging to override any module-level configs
     logging.basicConfig(
-        level=level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        level=level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        force=True,  # This ensures we override any existing configuration
     )
+
+    # Set xclock module loggers to appropriate levels
+    if verbose:
+        logging.getLogger("xclock").setLevel(logging.DEBUG)
+        # Also set specific module loggers that are commonly used
+        logging.getLogger("xclock.devices").setLevel(logging.DEBUG)
+        logging.getLogger("xclock.devices.labjack_devices").setLevel(logging.DEBUG)
+        logging.getLogger("xclock.edge_detection").setLevel(logging.DEBUG)
+    else:
+        # Ensure INFO level for non-verbose mode
+        logging.getLogger("xclock").setLevel(logging.INFO)
+        logging.getLogger("xclock.devices").setLevel(logging.INFO)
+        logging.getLogger("xclock.devices.labjack_devices").setLevel(logging.INFO)
+        logging.getLogger("xclock.edge_detection").setLevel(logging.INFO)
 
 
 def parse_comma_separated_numbers(value: str) -> List[float]:
@@ -89,6 +108,12 @@ def cmd_start(args) -> None:
     setup_logging(args.verbose)
 
     try:
+        # Validate that clock-tick-rates is provided for start command
+        if not args.clock_tick_rates:
+            raise XClockValueError(
+                "--clock-tick-rates is required for the start command"
+            )
+
         device = create_device(args.device)
 
         # Parse number of pulses if provided
@@ -104,19 +129,59 @@ def cmd_start(args) -> None:
         # Determine if we have pulsed clocks
         has_pulsed_clocks = pulses is not None and any(p > 0 for p in pulses)
 
+        # Handle when to start
+        if args.when == "on_trigger":
+            # Wait for trigger before starting
+            trigger_channels = device.get_available_input_start_trigger_channels()
+            if not trigger_channels:
+                raise XClockException("Device does not support trigger inputs")
+
+            trigger_channel = trigger_channels[0]  # Use first available
+
+            logger.info(f"Waiting for trigger on {trigger_channel}...")
+            logger.info("Send a rising edge to start clocks. Press Ctrl+C to cancel.")
+
+            # Wait for trigger
+            triggered = device.wait_for_trigger_edge(
+                channel_name=trigger_channel,
+                timeout_s=args.timeout if args.timeout > 0 else float("inf"),
+            )
+
+            if not triggered:
+                logger.info("Timeout waiting for trigger.")
+                sys.exit(1)
+
+            logger.info("Trigger received! Starting clocks...")
+
         # Start clocks
-        logger.info("Starting clocks...")
-        device.start_clocks(
-            wait_for_pulsed_clocks_to_finish=has_pulsed_clocks,
-            timeout_duration_s=args.duration if args.duration > 0 else 0.0,
-        )
+        if args.when == "now":
+            logger.info("Starting clocks...")
+
+        # Handle recording timestamps
+        if args.record_timestamps:
+            logger.info("Recording edge timestamps...")
+            # Determine filename for timestamps
+            output_dir = Path.home() / "Documents" / "XClock"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            filename = output_dir / f"xclock_timestamps_{int(time.time())}.csv"
+
+            device.start_clocks_and_record_edge_timestamps(
+                wait_for_pulsed_clocks_to_finish=has_pulsed_clocks,
+                timeout_duration_s=args.duration if args.duration > 0 else 0.0,
+                filename=filename,
+            )
+            logger.info(f"Timestamps saved to: {filename}")
+        else:
+            device.start_clocks(
+                wait_for_pulsed_clocks_to_finish=has_pulsed_clocks,
+                timeout_duration_s=args.duration if args.duration > 0 else 0.0,
+            )
 
         if has_pulsed_clocks:
             logger.info("All pulsed clocks finished.")
         elif args.duration > 0:
             logger.info(f"Clocks ran for {args.duration} seconds.")
-
-        else:
+        elif not args.record_timestamps:
             logger.info("Clocks started. Use Ctrl+C to stop.")
             try:
                 while True:
@@ -133,41 +198,19 @@ def cmd_start(args) -> None:
         sys.exit(1)
 
 
-def cmd_wait_for_trigger(args) -> None:
-    """Wait for trigger command."""
+def cmd_stop(args) -> None:
+    """Stop clocks command."""
     setup_logging(args.verbose)
 
     try:
         device = create_device(args.device)
 
-        # Setup clocks but don't start them
-        setup_clocks(device, args.clock_tick_rates)
-
-        trigger_channels = device.get_available_input_start_trigger_channels()
-        if not trigger_channels:
-            raise XClockException("Device does not support trigger inputs")
-
-        trigger_channel = trigger_channels[0]  # Use first available
-
-        logger.info(f"Waiting for trigger on {trigger_channel}...")
-        logger.info("Send a rising edge to start clocks. Press Ctrl+C to cancel.")
-
-        # Wait for trigger
-        triggered = device.wait_for_trigger_edge(
-            channel_name=trigger_channel,
-            timeout_s=args.timeout if args.timeout > 0 else float("inf"),
-        )
-
-        if triggered:
-            logger.info("Trigger received! Starting clocks...")
-            device.start_clocks(wait_for_pulsed_clocks_to_finish=True)
-            logger.info("Clocks finished.")
-        else:
-            logger.info("Timeout waiting for trigger.")
-            sys.exit(1)
+        logger.info("Stopping all clocks...")
+        device.stop_clocks()
+        logger.info("All clocks stopped.")
 
     except (XClockException, XClockValueError) as e:
-        logger.error(f"Error: {e}", file=sys.stderr)
+        logger.error(f"Error: {e}")
         sys.exit(1)
     except KeyboardInterrupt:
         logger.info("\nOperation cancelled.")
@@ -182,9 +225,11 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  xclock --clock-tick-rates 60,100 --device labjackt4 start --duration 5
+  xclock --clock-tick-rates 60,100 --device labjackt4 --duration 5 start
   xclock --clock-tick-rates 60,100 --device labjackt4 --number-of-pulses 200,150 start
-  xclock --clock-tick-rates 60,100 --device labjackt4 wait-for-trigger
+  xclock --clock-tick-rates 60,100 --device labjackt4 --when on_trigger start
+  xclock --clock-tick-rates 60,100 --device labjackt4 --record-timestamps start
+  xclock --device labjackt4 stop
         """,
     )
 
@@ -192,7 +237,7 @@ Examples:
     parser.add_argument(
         "--clock-tick-rates",
         type=parse_comma_separated_numbers,
-        required=True,
+        required=False,
         help="Comma-separated list of clock rates in Hz (e.g., 60,100)",
     )
 
@@ -205,6 +250,39 @@ Examples:
     )
 
     parser.add_argument(
+        "--when",
+        choices=["now", "on_trigger"],
+        default="now",
+        help="When to start clocks: 'now' or 'on_trigger' (default: now)",
+    )
+
+    parser.add_argument(
+        "--duration",
+        type=float,
+        default=0,
+        help="Duration to run clocks in seconds (0 = run until stopped)",
+    )
+
+    parser.add_argument(
+        "--number-of-pulses",
+        type=str,
+        help="Comma-separated number of pulses for each clock (for pulsed mode)",
+    )
+
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=0,
+        help="Timeout in seconds when waiting for trigger (<=0 : no timeout)",
+    )
+
+    parser.add_argument(
+        "--record-timestamps",
+        action="store_true",
+        help="Record edge timestamps to CSV file",
+    )
+
+    parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging"
     )
 
@@ -213,27 +291,11 @@ Examples:
 
     # Start command
     start_parser = subparsers.add_parser("start", help="Start clocks")
-    start_parser.add_argument(
-        "--duration",
-        type=float,
-        default=0,
-        help="Duration to run clocks in seconds (0 = run until stopped)",
-    )
-    start_parser.add_argument(
-        "--number-of-pulses",
-        type=str,
-        help="Comma-separated number of pulses for each clock (for pulsed mode)",
-    )
     start_parser.set_defaults(func=cmd_start)
 
-    # Wait-for-trigger command
-    trigger_parser = subparsers.add_parser(
-        "wait-for-trigger", help="Wait for trigger to start clocks"
-    )
-    trigger_parser.add_argument(
-        "--timeout", type=float, default=0, help="Timeout in seconds (<=0 : no timeout)"
-    )
-    trigger_parser.set_defaults(func=cmd_wait_for_trigger)
+    # Stop command
+    stop_parser = subparsers.add_parser("stop", help="Stop all running clocks")
+    stop_parser.set_defaults(func=cmd_stop)
 
     return parser
 

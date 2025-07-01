@@ -13,9 +13,6 @@ from xclock.devices.daq_device import ClockChannel, ClockDaqDevice, EdgeType
 from xclock.errors import XClockException, XClockValueError
 from xclock.edge_detection import detect_edges_along_columns
 
-logging.basicConfig(
-    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -295,9 +292,10 @@ class LabJackT4(ClockDaqDevice):
 
         self._clock_on_indicator_channel = LabJackT4.avilable_output_const_channels[0]
 
-        # disable pullup on all channels
-        ljm.eWriteName(self.handle, "DIO_PULLUP_DISABLE", 0b111111111110000)
-        #
+        # disable pullup on all channels (TODO: This does not seem to work on LabJack T4
+        # although it is supposed to)
+        # ljm.eWriteName(self.handle, "DIO_PULLUP_DISABLE", 0b111111111110000)
+
         # read all channels once to make sure they are digital (we're not using analog here)
         _ = ljm.eReadNames(
             self.handle,
@@ -623,8 +621,8 @@ class LabJackEdgeStreamer:
     def __init__(
         self,
         handle: int,
-        channel_names,
-        internal_clock_sampling_rate_hz,
+        channel_names: list[str],
+        internal_clock_sampling_rate_hz: int | float,
         scan_rate_hz=1000,
         filename=None,
     ):
@@ -639,8 +637,9 @@ class LabJackEdgeStreamer:
         self.number_of_detected_edges = 0
 
         if filename is None:
+            timestamp_str = time.strftime("%Y-%m-%d_%H-%M-%S")
             filename = os.path.join(
-                DEFAULT_OUTPUT_DIRECTORY, f"labjack_stream_{int(time.time())}.csv"
+                DEFAULT_OUTPUT_DIRECTORY, f"labjack_stream_{timestamp_str}.csv"
             )
 
         self.filename = filename
@@ -668,7 +667,6 @@ class LabJackEdgeStreamer:
         if self.is_streaming():
             logger.info("Streaming already running!")
             return
-
         self.stop_event.clear()
         self.streaming_thread = threading.Thread(
             target=self._streaming_loop, daemon=True
@@ -678,7 +676,9 @@ class LabJackEdgeStreamer:
         result = self.ready_event.wait(5)
         if not result:
             raise XClockException(f"Could not start edge detector thread")
-        logger.info(f"Background streaming started at {self.scan_rate} Hz")
+        logger.info(
+            f"Start background streaming and edge detection on {self.channel_names[:-2]} at {self.scan_rate} Hz"
+        )
 
     def stop_streaming(self):
         """Stop background streaming"""
@@ -702,18 +702,6 @@ class LabJackEdgeStreamer:
             aNames = ["STREAM_SETTLING_US", "STREAM_RESOLUTION_INDEX"]
             aValues = [0, 0]
             ljm.eWriteNames(self.handle, len(aNames), aNames, aValues)
-
-            # --- IMPORTANT NOTE ---
-            # When you add a digital channel (e.g., DIO#) to the scan list for streaming,
-            # the LabJack will automatically configure that channel as a digital INPUT.
-            # However, if the channel was previously set as an OUTPUT and set HIGH,
-            # it may remain HIGH until you explicitly set it LOW or reconfigure it as input.
-            # Also, some LabJack devices may have pull-up resistors enabled by default,
-            # causing unconnected digital inputs to read as HIGH.
-            # If you want the channel to be LOW during streaming, ensure:
-            #   - The channel is set as input (default for streaming)
-            #   - There are no external pull-ups, or you use a pull-down resistor
-            #   - You explicitly set the state before streaming if needed
 
             ljm.eStreamStart(
                 handle=self.handle,
