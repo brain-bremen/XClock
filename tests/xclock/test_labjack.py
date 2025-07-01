@@ -87,7 +87,46 @@ def test_start_and_stop_clocks(device: ClockDaqDevice):
 
 
 @pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
-def test_start_pulsed_clocks_and_wait(device: ClockDaqDevice):
+def test_automatic_clock_channel_selection(device: ClockDaqDevice):
+    available_clock_channels = device.get_available_output_clock_channels()
+
+    clock_channels = []
+    for channel in available_clock_channels:
+        clock_channels.append(device.add_clock_channel(clock_tick_rate_hz=30))
+
+    assert device.get_added_clock_channels() == clock_channels
+
+    # should fail as there are no more channels
+    with pytest.raises(XClockException):
+        device.add_clock_channel(clock_tick_rate_hz=30)
+
+
+@pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
+def test_start_clocks_with_duration(device: ClockDaqDevice):
+    available_clock_channels = device.get_available_output_clock_channels()
+
+    clock_channels = []
+    for channel in available_clock_channels:
+        clock_channels.append(device.add_clock_channel(clock_tick_rate_hz=30))
+
+    expected_duration = 1.0
+    t_start = time.time()
+    device.start_clocks(
+        wait_for_pulsed_clocks_to_finish=False, timeout_duration_s=expected_duration
+    )
+    duration = time.time() - t_start
+    assert duration > 0.95 * expected_duration and duration < 1.1 * expected_duration
+
+    device.stop_clocks()
+
+    with pytest.raises(XClockValueError):
+        device.start_clocks(
+            wait_for_pulsed_clocks_to_finish=True, timeout_duration_s=1.0
+        )
+
+
+@pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
+def test_start_pulsed_clocks_and_wait_for_finish(device: ClockDaqDevice):
     available_clock_channels = device.get_available_output_clock_channels()
     assert len(available_clock_channels) > 0
 
