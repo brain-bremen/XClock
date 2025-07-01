@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Optional
 
 
-from xclock.devices import ClockDaqDevice, LabJackT4
+from xclock.devices import ClockDaqDevice, LabJackT4, DummyDaqDevice
 from xclock.errors import XClockException, XClockValueError
 
 logger = logging.getLogger(__name__)
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 # Device mapping
 DEVICE_MAP = {
     "labjackt4": LabJackT4,
+    "dummydaqdevice": DummyDaqDevice,
 }
 
 
