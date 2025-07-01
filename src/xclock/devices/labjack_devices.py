@@ -223,8 +223,16 @@ def _set_output_channels_state(handle: int, channel_names: list[str], state: int
 class LabJackT4(ClockDaqDevice):
     """LabJack T4 device class
 
-    Supports two clock signals on FIO6/DIO6 and FIO7/DIO7. The base clock
-    frequency is 80 MHz.
+    Supports two clock signals on FIO6/DIO6 and FIO7/DIO7. The base clock frequency is 80
+    MHz.
+
+    DIO5/FIO5 serves as an output trigger that is active while any clock is active.
+
+    DIO4/FIO4 can be used as additional
+
+    For recording the timestamps, the FIO6 and FIO7 pins have to be connected to DIO14/EIO6
+    and EIO15/EIO7 (on the DSUB15 connector),  respectively as directly reading out an
+    output channel via streaming is not supported.
 
     """
 
@@ -260,8 +268,10 @@ class LabJackT4(ClockDaqDevice):
 
     _used_clock_channel_names: set[str] = set()
     _unused_clock_channel_names: set[str]
+    _clock_copy_channel_names: list[str] = ["EIO6", "EIO7"]
     _clock_channels: list[ClockChannel] = []
     _clock_on_indicator_channel: str  # channel that is ON during clock output
+    _all_digital_channels = [f"DIO{channel}" for channel in range(4, 20)]
 
     def __init__(self):
         try:
@@ -285,6 +295,16 @@ class LabJackT4(ClockDaqDevice):
 
         self._clock_on_indicator_channel = LabJackT4.avilable_output_const_channels[0]
 
+        # disable pullup on all channels
+        ljm.eWriteName(self.handle, "DIO_PULLUP_DISABLE", 0b111111111110000)
+        #
+        # read all channels once to make sure they are digital (we're not using analog here)
+        _ = ljm.eReadNames(
+            self.handle,
+            len(LabJackT4._all_digital_channels),
+            LabJackT4._all_digital_channels,
+        )
+
         _reset_output_channels(
             self.handle,
             list(self.get_available_output_clock_channels())
@@ -300,9 +320,25 @@ class LabJackT4(ClockDaqDevice):
 
     def start_clocks(
         self,
-        wait_for_pulsed_clocks_to_finish: bool = True,
-        maximum_wait_duration_s: float = 8 * 60 * 60.0,  # eight hours
+        wait_for_pulsed_clocks_to_finish: bool = True,  # return before timeout if pulsed clocks are finished
+        timeout_duration_s: float = 0.0,  # return after timeout if timeout > 0
     ):
+        """
+        Starts the configured clocks on the LabJack T4 device. This function has three
+        modes:
+
+        (1) If `wait_for_pulsed_clocks_to_finish` is True, the function will wait until all
+            pulsed locks are finished (potentially forever).
+
+        (2) If `timeout_duration_s` is >0 and ,`wait_for_pulsed_clocks_to_finish` is False,
+            the function will wait until the timeout duration has passed.
+
+        (3) If `wait_for_pulsed_clocks_to_finish` is False and `timeout_duration_s` is <= 0,
+            the function will return immediately.
+
+
+        """
+
         logger.debug(
             f"Starting clocks on {[channel.channel_name for channel in self._clock_channels]} indicator on {self._clock_on_indicator_channel}"
         )
@@ -314,6 +350,11 @@ class LabJackT4(ClockDaqDevice):
                 "No clock channels configured. Use add_clock_channel() first"
             )
 
+        if wait_for_pulsed_clocks_to_finish is True and timeout_duration_s > 0:
+            raise XClockValueError(
+                "wait_for_pulsed_clocks_to_finish cannot be True with a timeout_duration_s > 0. These options are mutually exclusive."
+            )
+
         config = {DigIoRegisters(self._clock_on_indicator_channel).channel: 1}
         for channel in self._clock_channels:
             config[DigIoRegisters(channel.channel_name).enable_extended_feature] = 1
@@ -322,12 +363,16 @@ class LabJackT4(ClockDaqDevice):
 
         _write_register_dict_to_ljm(handle=self.handle, config=config)
 
-        pulsed_clocks = [
-            channel
-            for channel in self._clock_channels
-            if channel.number_of_pulses is not None
-        ]
-        if wait_for_pulsed_clocks_to_finish and len(pulsed_clocks) > 0:
+        if wait_for_pulsed_clocks_to_finish:
+            pulsed_clocks = [
+                channel
+                for channel in self._clock_channels
+                if channel.number_of_pulses is not None
+            ]
+            if len(pulsed_clocks) == 0:
+                return
+
+            logger.debug(f"Waiting for pulsed clocks to finish: {pulsed_clocks}")
             register_names = [
                 (
                     DigIoRegisters(clock.channel_name).read_a,
@@ -336,8 +381,8 @@ class LabJackT4(ClockDaqDevice):
                 for clock in pulsed_clocks
             ]
             isDone = [False] * len(register_names)
-            t_start = time.time()
-            while not all(isDone) and (time.time() - t_start) < maximum_wait_duration_s:
+            # t_start = time.time()
+            while not all(isDone):
                 for index, channel_register in enumerate(register_names):
                     completed, target = ljm.eReadNames(
                         self.handle,
@@ -351,6 +396,18 @@ class LabJackT4(ClockDaqDevice):
             )
             for clock in pulsed_clocks:
                 clock.clock_enabled = False
+            return
+
+        if timeout_duration_s > 0.0:
+            logger.debug(f"Waiting for timeout of {timeout_duration_s} s")
+            # use ljm intervals to wait for duartion
+            interval_us = int(1e6 * timeout_duration_s)
+            interval_handle = 1  # Use 1 as the interval handle ID
+            ljm.startInterval(interval_handle, interval_us)
+            try:
+                ljm.waitForNextInterval(interval_handle)
+            finally:
+                ljm.cleanInterval(interval_handle)
 
     def stop_clocks(self):
         if self.handle is None:
@@ -454,8 +511,8 @@ class LabJackT4(ClockDaqDevice):
 
     def start_clocks_and_record_edge_timestamps(
         self,
-        duration_s: float,
         wait_for_pulsed_clocks_to_finish: bool = True,
+        timeout_duration_s: float = 0.0,
         extra_channels: list[
             str
         ] = [],  # record edge timestamps also on these channels in addition to clocks
@@ -470,19 +527,17 @@ class LabJackT4(ClockDaqDevice):
 
         streamer = LabJackEdgeStreamer(
             self,
-            list(self._used_clock_channel_names) + extra_channels,
-            scan_rate_hz=1000,
+            list(self._clock_copy_channel_names) + extra_channels,
+            scan_rate_hz=10000,
             filename=filename,
         )
 
-        t_start = time.time()
         streamer.start_streaming()
-        while time.time() - t_start < duration_s:
-            self.start_clocks(
-                wait_for_pulsed_clocks_to_finish=wait_for_pulsed_clocks_to_finish
-            )
+        self.start_clocks(
+            wait_for_pulsed_clocks_to_finish=wait_for_pulsed_clocks_to_finish,
+            timeout_duration_s=timeout_duration_s,
+        )
 
-        # Stop everything
         self.stop_clocks()
         streamer.stop_streaming()
 
@@ -611,6 +666,7 @@ class LabJackEdgeStreamer:
             target=self._streaming_loop, daemon=True
         )
         self.streaming_thread.start()
+        logger.debug("Waiting for streaming thread to become ready")
         result = self.ready_event.wait(5)
         if not result:
             raise XClockException(f"Could not start edge detector thread")
@@ -638,6 +694,18 @@ class LabJackEdgeStreamer:
             aNames = ["STREAM_SETTLING_US", "STREAM_RESOLUTION_INDEX"]
             aValues = [0, 0]
             ljm.eWriteNames(self.t4.handle, len(aNames), aNames, aValues)
+
+            # --- IMPORTANT NOTE ---
+            # When you add a digital channel (e.g., DIO#) to the scan list for streaming,
+            # the LabJack will automatically configure that channel as a digital INPUT.
+            # However, if the channel was previously set as an OUTPUT and set HIGH,
+            # it may remain HIGH until you explicitly set it LOW or reconfigure it as input.
+            # Also, some LabJack devices may have pull-up resistors enabled by default,
+            # causing unconnected digital inputs to read as HIGH.
+            # If you want the channel to be LOW during streaming, ensure:
+            #   - The channel is set as input (default for streaming)
+            #   - There are no external pull-ups, or you use a pull-down resistor
+            #   - You explicitly set the state before streaming if needed
 
             ljm.eStreamStart(
                 handle=self.t4.handle,
