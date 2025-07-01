@@ -70,9 +70,10 @@ loaded_data = np.loadtxt(output_filename, dtype=np.int64, delimiter=",")
 
 See more examples in the [examples directory](examples/labjack_t4.py).
 
-## CLI tool
+## `xclock` CLI tool
 
-Planned:
+The `xclock` CLI tool can be used to start clocks on a DAQ device as above, but directly
+from the command line interface without writing your own Python script.
 
 ```bash
 xclock --clock-tick-rates 60,100 --device labjack --duration 100 --verbose start
