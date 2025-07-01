@@ -2,14 +2,15 @@ import pytest
 import time
 from xclock.errors import XClockException, XClockValueError
 from xclock.devices import ClockDaqDevice
-from xclock.devices.labjack_devices import LabJackEdgeStreamer
+from xclock.devices.labjack_devices import LabJackEdgeStreamer, LabJackT4
 import numpy as np
+
+DEVICE_NAME = "LabJack T4"
+DEVICE_CLASS = LabJackT4
 
 # Try to instantiate the hardware
 try:
-    from xclock.devices import LabJackT4
-
-    t4 = LabJackT4()
+    daq_device = DEVICE_CLASS()
     hardware_available = True
 except Exception as e:
     hardware_available = False
@@ -17,10 +18,10 @@ except Exception as e:
 
 @pytest.fixture(scope="module")
 def device():
-    """Fixture to provide the LabJack T4 device."""
+    """Fixture to provide the device."""
     if not hardware_available:
-        pytest.skip("LabJack T4 hardware not available")
-    return t4
+        pytest.skip(f"{DEVICE_NAME} hardware not available")
+    return daq_device
 
 
 @pytest.fixture(autouse=True)
@@ -28,7 +29,7 @@ def run_before_and_after_tests(device):
     device.clear_clocks()
 
 
-@pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
+@pytest.mark.skipif(not hardware_available, reason=f"{DEVICE_NAME} not available")
 def test_add_clock_channel(device: ClockDaqDevice):
     available_clock_channels = device.get_available_output_clock_channels()
 
@@ -63,7 +64,7 @@ def test_add_clock_channel(device: ClockDaqDevice):
     assert len(device.get_added_clock_channels()) == 0
 
 
-@pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
+@pytest.mark.skipif(not hardware_available, reason=f"{DEVICE_NAME} not available")
 def test_start_and_stop_clocks(device: ClockDaqDevice):
     available_clock_channels = device.get_available_output_clock_channels()
     assert len(available_clock_channels) > 0
@@ -86,7 +87,7 @@ def test_start_and_stop_clocks(device: ClockDaqDevice):
     assert not clock_channel.clock_enabled
 
 
-@pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
+@pytest.mark.skipif(not hardware_available, reason=f"{DEVICE_NAME} not available")
 def test_automatic_clock_channel_selection(device: ClockDaqDevice):
     available_clock_channels = device.get_available_output_clock_channels()
 
@@ -101,7 +102,7 @@ def test_automatic_clock_channel_selection(device: ClockDaqDevice):
         device.add_clock_channel(clock_tick_rate_hz=30)
 
 
-@pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
+@pytest.mark.skipif(not hardware_available, reason=f"{DEVICE_NAME} not available")
 def test_start_clocks_with_duration(device: ClockDaqDevice):
     available_clock_channels = device.get_available_output_clock_channels()
 
@@ -125,7 +126,7 @@ def test_start_clocks_with_duration(device: ClockDaqDevice):
         )
 
 
-@pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
+@pytest.mark.skipif(not hardware_available, reason=f"{DEVICE_NAME} not available")
 def test_start_pulsed_clocks_and_wait_for_finish(device: ClockDaqDevice):
     available_clock_channels = device.get_available_output_clock_channels()
     assert len(available_clock_channels) > 0
@@ -152,7 +153,7 @@ def test_start_pulsed_clocks_and_wait_for_finish(device: ClockDaqDevice):
     device.clear_clocks()
 
 
-@pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
+@pytest.mark.skipif(not hardware_available, reason=f"{DEVICE_NAME} not available")
 def test_streaming(device: ClockDaqDevice, tmp_path):
     available_clock_channels = device.get_available_output_clock_channels()
     assert len(available_clock_channels) > 0
@@ -182,7 +183,7 @@ def test_streaming(device: ClockDaqDevice, tmp_path):
     assert np.all(np.abs(dt - expected_dt_ns) < tolerance_ns)
 
 
-@pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
+@pytest.mark.skipif(not hardware_available, reason=f"{DEVICE_NAME} not available")
 def test_streaming_no_clocks(device: ClockDaqDevice):
     channel_names = ["DIO6"]
     streamer = LabJackEdgeStreamer(
@@ -201,7 +202,7 @@ def test_streaming_no_clocks(device: ClockDaqDevice):
     assert not streamer.is_streaming()
 
 
-@pytest.mark.skipif(not hardware_available, reason="Labjack T4 not available")
+@pytest.mark.skipif(not hardware_available, reason=f"{DEVICE_NAME} not available")
 def test_streaming_with_separate_streamer(device: ClockDaqDevice):
     # Setup LabJack
 
@@ -215,7 +216,7 @@ def test_streaming_with_separate_streamer(device: ClockDaqDevice):
 
     streamer.start_streaming()
     assert streamer.is_streaming()
-    t4.start_clocks(wait_for_pulsed_clocks_to_finish=True)
+    daq_device.start_clocks(wait_for_pulsed_clocks_to_finish=True)
 
     streamer.stop_streaming()
 

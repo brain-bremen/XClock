@@ -62,7 +62,7 @@ class ClockDaqDevice(ABC):
     @abstractmethod
     def start_clocks(
         self,
-        wait_for_pulsed_clocks_to_finish: bool = True,
+        wait_for_pulsed_clocks_to_finish: bool = False,
         timeout_duration_s: float = 0.0,
     ):
         pass
