@@ -302,6 +302,9 @@ class LabJackT4(ClockDaqDevice):
         wait_for_pulsed_clocks_to_finish: bool = True,
         maximum_wait_duration_s: float = 8 * 60 * 60.0,  # eight hours
     ):
+        logger.debug(
+            f"Starting clocks on {[channel.channel_name for channel in self._clock_channels]} indicator on {self._clock_on_indicator_channel}"
+        )
         if self.handle is None:
             raise XClockException("Labjack device is not initialized")
 
@@ -342,6 +345,9 @@ class LabJackT4(ClockDaqDevice):
                     )
                     if completed >= target:
                         isDone[index] = True
+            ljm.eWriteName(
+                self.handle, DigIoRegisters(self._clock_on_indicator_channel).channel, 0
+            )
             for clock in pulsed_clocks:
                 clock.clock_enabled = False
 
@@ -763,17 +769,17 @@ if __name__ == "__main__":
         available_clock_channels = t4.get_available_output_clock_channels()
 
         t4.add_clock_channel(
-            clock_tick_rate_hz=100,
+            clock_tick_rate_hz=75,
             channel_name=available_clock_channels[0],
             enable_clock_now=False,
-            number_of_pulses=200,
+            number_of_pulses=10,
         )
 
         t4.add_clock_channel(
-            clock_tick_rate_hz=50,
+            clock_tick_rate_hz=30,
             channel_name=available_clock_channels[1],
             enable_clock_now=False,
-            number_of_pulses=50,
+            number_of_pulses=5,
         )
 
         print(t4)
