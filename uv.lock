@@ -725,6 +725,7 @@ source = { editable = "." }
 dependencies = [
     { name = "labjack-ljm" },
     { name = "nidaqmx" },
+    { name = "numpy" },
 ]
 
 [package.dev-dependencies]
@@ -738,6 +739,7 @@ dev = [
 requires-dist = [
     { name = "labjack-ljm", specifier = ">=1.23.0" },
     { name = "nidaqmx", specifier = ">=1.0.2" },
+    { name = "numpy", specifier = ">=2.2.0" },
 ]
 
 [package.metadata.requires-dev]
