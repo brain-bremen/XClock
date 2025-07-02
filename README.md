@@ -162,13 +162,14 @@ When using `--record-timestamps`, the CLI will:
 
 ## Device Support
 
-Currently supported devices:
-- `labjackt4` - LabJack T4 (default)
+Currently only the LabJack T4 is supported to be used as a clock device. The recommended and supported wiring is as follows:
+
+![](resources/labjack_t4_wiring.png)
+
 
 ## Adding a different, unsupported device as a clock
 
-Currently only the LabJack T4 is supported to be used as a clock device. Adding a new device
-entails the following steps
+Adding a new device is straightforward and entails the following steps.
 
 - Write a class similar to `LabJackT4` that adheres to (inherits from) the interface defined
   in `ClockDaqDevice`. Implement all the abstract methods.
