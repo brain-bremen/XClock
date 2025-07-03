@@ -370,6 +370,15 @@ wheels = [
 ]
 
 [[package]]
+name = "labjackpython"
+version = "2.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/c5/f174d72ca2ad85b6f2bb41491a7bc02dc26b380a09e6dc54b515efa06d6d/LabJackPython-2.1.0.tar.gz", hash = "sha256:c4fb8fe1ce161949cb2bb70e5fe8e99549121b065c45c8511293f6ff8037a160", size = 113538, upload_time = "2022-11-03T21:17:16.074Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f0/98/7d8a4db1b169959e7a3f52110c919ae20d5afbe8853d528f4f2862957bd1/LabJackPython-2.1.0-py2.py3-none-any.whl", hash = "sha256:0ed87a94d3711f50e171a7fd2b45f4654b8186150688a99950319c1cdf3cfc29", size = 115467, upload_time = "2022-11-03T21:17:14.992Z" },
+]
+
+[[package]]
 name = "matplotlib"
 version = "3.10.3"
 source = { registry = "https://pypi.org/simple" }
@@ -724,6 +733,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "labjack-ljm" },
+    { name = "labjackpython" },
     { name = "nidaqmx" },
     { name = "numpy" },
 ]
@@ -737,9 +747,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "labjack-ljm", specifier = ">=1.23.0" },
-    { name = "nidaqmx", specifier = ">=1.0.2" },
-    { name = "numpy", specifier = ">=2.2.0" },
+    { name = "labjack-ljm", specifier = ">=1.23.0,<2.0.0" },
+    { name = "labjackpython", specifier = ">=2.1.0" },
+    { name = "nidaqmx", specifier = ">=1.0.2,<2.0.0" },
+    { name = "numpy", specifier = ">=2.2.0,<3.0.0" },
 ]
 
 [package.metadata.requires-dev]

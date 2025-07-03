@@ -26,6 +26,7 @@ classifiers = [
 requires-python = ">=3.11"
 dependencies = [
     "labjack-ljm>=1.23.0,<2.0.0",
+    "labjackpython>=2.1.0",
     "nidaqmx>=1.0.2,<2.0.0",
     "numpy>=2.2.0,<3.0.0",
 ]
