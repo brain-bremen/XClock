@@ -22,6 +22,9 @@ class ClockDaqDevice(ABC):
     handle: int
     base_clock_frequency_hz: int | float
 
+    # TODO: These static methods should be non-static as they are more useful
+    # when they actually reflect whats available right now.
+
     @staticmethod
     @abstractmethod
     def get_available_input_start_trigger_channels() -> tuple[str, ...]:
