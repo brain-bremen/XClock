@@ -166,10 +166,19 @@ def cmd_start(args) -> None:
             output_dir.mkdir(parents=True, exist_ok=True)
             filename = output_dir / f"xclock_timestamps_{int(time.time())}.csv"
 
+            # Parse extra channels for edge detection if provided
+            extra_channels: list[str] = []
+            if args.detect_edges_on:
+                extra_channels = [
+                    x.strip() for x in args.detect_edges_on.split(",") if x.strip()
+                ]
+                logger.info(f"Detecting edges on additional channels: {extra_channels}")
+
             device.start_clocks_and_record_edge_timestamps(
                 wait_for_pulsed_clocks_to_finish=has_pulsed_clocks,
                 timeout_duration_s=args.duration if args.duration > 0 else 0.0,
                 filename=filename,
+                extra_channels=extra_channels,
             )
             logger.info(f"Timestamps saved to: {filename}")
         else:
@@ -230,6 +239,7 @@ Examples:
   xclock --clock-tick-rates 60,100 --device labjackt4 --number-of-pulses 200,150 start
   xclock --clock-tick-rates 60,100 --device labjackt4 --when on_trigger start
   xclock --clock-tick-rates 60,100 --device labjackt4 --record-timestamps start
+  xclock --clock-tick-rates 60,100 --record-timestamps --detect_edges_on EIO4,EIO5 start
   xclock --device labjackt4 stop
         """,
     )
@@ -281,6 +291,12 @@ Examples:
         "--record-timestamps",
         action="store_true",
         help="Record edge timestamps to CSV file",
+    )
+
+    parser.add_argument(
+        "--detect-edges-on",
+        type=str,
+        help="Comma-separated list of channels to detect edges on (e.g., EIO4,EIO5)",
     )
 
     parser.add_argument(
