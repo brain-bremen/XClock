@@ -534,6 +534,7 @@ class LabJackT4(ClockDaqDevice):
         )
 
         streamer.start_streaming()
+        time.sleep(0.5)
         self.start_clocks(
             wait_for_pulsed_clocks_to_finish=wait_for_pulsed_clocks_to_finish,
             timeout_duration_s=timeout_duration_s,
@@ -715,9 +716,10 @@ class LabJackEdgeStreamer:
                 ljm.eReadName(self.handle, "STREAM_START_TIME_STAMP")
             )
             self._skipped_samples = 0
-            self.ready_event.set()
             while not self.stop_event.is_set():
                 aData, deviceScanBacklog, ljmScanBacklog = ljm.eStreamRead(self.handle)
+                # if self.ready_event.is_set()
+                self.ready_event.set()
 
                 logger.debug(
                     f"Read {len(aData)} data points from stream backlog={deviceScanBacklog}/{ljmScanBacklog} (device/host)"
