@@ -717,6 +717,7 @@ class LabJackEdgeStreamer:
             )
             self._skipped_samples = 0
             while not self.stop_event.is_set():
+                current_host_timestamp = np.int64(time.time() * 1e9)  # in nanoseconds
                 aData, deviceScanBacklog, ljmScanBacklog = ljm.eStreamRead(self.handle)
                 # if self.ready_event.is_set()
                 self.ready_event.set()
@@ -753,6 +754,18 @@ class LabJackEdgeStreamer:
 
                 # Update last row for next iteration but keep 2d shape
                 self._last_row = data[[-1], :]
+
+                # add host timestamp as last column to data before writing to disk
+                edge_timestamps = np.hstack(
+                    (
+                        edge_timestamps,
+                        np.full(
+                            (edge_timestamps.shape[0], 1),
+                            current_host_timestamp,
+                            dtype=np.int64,
+                        ),
+                    )
+                )
 
                 if self._file:
                     np.savetxt(
