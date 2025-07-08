@@ -164,7 +164,8 @@ def cmd_start(args) -> None:
             # Determine filename for timestamps
             output_dir = Path.home() / "Documents" / "XClock"
             output_dir.mkdir(parents=True, exist_ok=True)
-            filename = output_dir / f"xclock_timestamps_{int(time.time())}.csv"
+            timestamp_str = time.strftime("%Y-%m-%d_%H-%M-%S")
+            filename = output_dir / f"xclock_timestamps_{timestamp_str}.csv"
 
             # Parse extra channels for edge detection if provided
             extra_channels: list[str] = []
