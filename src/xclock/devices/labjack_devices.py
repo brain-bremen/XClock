@@ -320,6 +320,7 @@ class LabJackT4(ClockDaqDevice):
         self,
         wait_for_pulsed_clocks_to_finish: bool = False,  # return before timeout if pulsed clocks are finished
         timeout_duration_s: float = 0.0,  # return after timeout if timeout > 0
+        delay_after_last_pulse_s: float = 0.1,
     ):
         """
         Starts the configured clocks on the LabJack T4 device. This function has three
@@ -389,6 +390,8 @@ class LabJackT4(ClockDaqDevice):
                     )
                     if completed >= target:
                         isDone[index] = True
+            # delay to let incoming edges settle/be processed
+            time.sleep(delay_after_last_pulse_s)
             ljm.eWriteName(
                 self.handle, DigIoRegisters(self._clock_on_indicator_channel).channel, 0
             )

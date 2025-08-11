@@ -1,16 +1,19 @@
 [project]
 name = "XClock"
-version = "0.2.1"
+version = "0.2.2"
 description = "Tools for synchronizing eXperimental Clocks"
 readme = "README.md"
-license = {text = "MIT"}
-authors = [
-    {name = "Joscha Schmiedt", email = "schmiedt@uni-bremen.de"},
+license = { text = "MIT" }
+authors = [{ name = "Joscha Schmiedt", email = "schmiedt@uni-bremen.de" }]
+maintainers = [{ name = "Joscha Schmiedt", email = "schmiedt@uni-bremen.de" }]
+keywords = [
+    "synchronization",
+    "timing",
+    "experimental",
+    "daq",
+    "labjack",
+    "nidaq",
 ]
-maintainers = [
-    {name = "Joscha Schmiedt", email = "schmiedt@uni-bremen.de"},
-]
-keywords = ["synchronization", "timing", "experimental", "daq", "labjack", "nidaq"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -53,8 +56,4 @@ venvPath = "."
 venv = ".venv"
 
 [dependency-groups]
-dev = [
-    "matplotlib>=3.10.3",
-    "pytest>=8.4.1",
-    "pytest-cov>=6.2.1",
-]
+dev = ["matplotlib>=3.10.3", "pytest>=8.4.1", "pytest-cov>=6.2.1"]

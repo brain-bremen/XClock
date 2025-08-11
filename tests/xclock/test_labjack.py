@@ -177,7 +177,7 @@ def test_streaming(device: ClockDaqDevice, tmp_path):
     )
 
     loaded_data = np.loadtxt(tmp_path / "foo.csv", dtype=np.int64, delimiter=",")
-    assert loaded_data.shape == (number_of_pulses * 2, 2)
+    assert loaded_data.shape == (number_of_pulses * 2, 3)
     # check that frequency is roughly in range
     dt = np.diff(loaded_data[loaded_data[:, 1] == 1, 0])
     assert np.all(np.abs(dt - expected_dt_ns) < tolerance_ns)
