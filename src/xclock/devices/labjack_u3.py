@@ -65,3 +65,9 @@ class LabJackU3(ClockDaqDevice):
         edge_type: EdgeType = EdgeType.RISING,
     ) -> bool:
         raise NotImplementedError()
+
+    def close(self):
+        try:
+            self.u3.close()
+        except Exception:
+            pass

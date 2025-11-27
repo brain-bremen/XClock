@@ -88,3 +88,7 @@ class ClockDaqDevice(ABC):
     @abstractmethod
     def clear_clocks(self):
         pass
+
+    @abstractmethod
+    def close(self):
+        pass

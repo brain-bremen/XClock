@@ -269,14 +269,16 @@ class LabJackT4(ClockDaqDevice):
     connectionType: int
     serialNumber: int
 
-    _used_clock_channel_names: set[str] = set()
+    _used_clock_channel_names: set[str]
     _unused_clock_channel_names: set[str]
     _clock_copy_channel_names: list[str] = ["EIO6", "EIO7"]
-    _clock_channels: list[ClockChannel] = []
+    _clock_channels: list[ClockChannel]
     _clock_on_indicator_channel: str  # channel that is ON during clock output
     _all_digital_channels = [f"DIO{channel}" for channel in range(4, 20)]
 
     def __init__(self):
+        self._used_clock_channel_names = set()
+        self._clock_channels = []
         try:
             self.handle = ljm.openS("T4", "ANY", "ANY")
         except Exception as e:
@@ -321,6 +323,16 @@ class LabJackT4(ClockDaqDevice):
         self._unused_clock_channel_names = set(
             LabJackT4.available_output_clock_channels
         )
+
+    def close(self):
+        """Close the connection to the LabJack device."""
+        if self.handle is not None:
+            try:
+                ljm.close(self.handle)
+            except Exception as e:
+                logger.error(f"Failed to close LabJack T4: {e}")
+            finally:
+                self.handle = None
 
     @override
     def start_clocks(

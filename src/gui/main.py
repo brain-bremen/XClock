@@ -528,6 +528,13 @@ class XClockGUI:
         self.is_running = False
         self.start_button.config(state="normal")
         self.stop_button.config(state="disabled")
+        
+        if self.device and hasattr(self.device, "close"):
+            try:
+                self.device.close()
+            except Exception as e:
+                self.logger.error(f"Error closing device: {e}")
+        
         self.device = None
 
 

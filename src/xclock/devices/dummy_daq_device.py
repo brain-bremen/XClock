@@ -197,16 +197,18 @@ class DummyDaqDevice(ClockDaqDevice):
     def stop_clocks(self):
         """Stop all running clocks."""
         logger.info("Stopping all clocks")
-
+        self._clocks_running = False
         for channel in self._clock_channels:
             channel.clock_enabled = False
 
-        self._clocks_running = False
-
     def clear_clocks(self):
-        """Clear all clock channels."""
+        """Clear all added clocks."""
         logger.info("Clearing all clock channels")
-
         self.stop_clocks()
         self._clock_channels.clear()
         self._next_clock_id = 0
+
+    def close(self):
+        """Close the device."""
+        self.stop_clocks()
+        self.clear_clocks()
