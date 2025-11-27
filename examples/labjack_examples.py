@@ -23,26 +23,30 @@ t4.add_clock_channel(
 
 print(t4)
 
-# start clock right here
-t4.start_clocks()
-time.sleep(3)
-t4.stop_clocks()
+# start clock right here for 3 seconds using duration parameter
+t4.add_clock_channel(
+    clock_tick_rate_hz=100,
+    channel_name=available_clock_channels[0],
+    enable_clock_now=False,
+    duration_s=3.0,  # will auto-calculate to 300 pulses
+)
+t4.start_clocks(wait_for_pulsed_clocks_to_finish=True)
 t4.clear_clocks()  # removes all clocks
 
-# %% configure two clocks with different tick rates and a defined numer of pulses (~10 s)
-# add two clocks with a defined number of clock pulses (~10 s)
+# %% configure two clocks with different tick rates using duration (~10 s)
+# add two clocks with duration_s parameter - pulses are auto-calculated
 clock1 = t4.add_clock_channel(
     clock_tick_rate_hz=100,
     channel_name=available_clock_channels[0],
     enable_clock_now=False,
-    number_of_pulses=1000,
+    duration_s=10.0,  # will auto-calculate to 1000 pulses
 )
 
 clock2 = t4.add_clock_channel(
     clock_tick_rate_hz=60,
     channel_name=available_clock_channels[1],
     enable_clock_now=False,
-    number_of_pulses=600,
+    duration_s=10.0,  # will auto-calculate to 600 pulses
 )
 
 output_filename = pathlib.Path.home() / "Documents" / "XClock" / "foo.csv"

@@ -37,7 +37,10 @@ def test_add_clock_channel(device: ClockDaqDevice):
 
     assert len(available_clock_channels) > 0
     clock_channel = device.add_clock_channel(
-        100, available_clock_channels[0], None, False
+        clock_tick_rate_hz=100,
+        channel_name=available_clock_channels[0],
+        number_of_pulses=None,
+        enable_clock_now=False,
     )
     assert clock_channel.actual_sample_rate_hz == 100
     assert clock_channel.channel_name == available_clock_channels[0]
@@ -46,7 +49,12 @@ def test_add_clock_channel(device: ClockDaqDevice):
 
     # nonexistant channel must fail
     with pytest.raises(XClockException):
-        device.add_clock_channel(100, "NONEXISTANT_CHANNEL", None, False)
+        device.add_clock_channel(
+            clock_tick_rate_hz=100,
+            channel_name="NONEXISTANT_CHANNEL",
+            number_of_pulses=None,
+            enable_clock_now=False,
+        )
 
     for channel in available_clock_channels[1:]:
         device.add_clock_channel(
@@ -73,11 +81,14 @@ def test_start_and_stop_clocks(device: ClockDaqDevice):
 
     # Add a clock channel
     clock_channel = device.add_clock_channel(
-        100, available_clock_channels[0], number_of_pulses=None, enable_clock_now=False
+        clock_tick_rate_hz=100,
+        channel_name=available_clock_channels[0],
+        number_of_pulses=None,
+        enable_clock_now=False,
     )
 
     # Start the clock
-    device.start_clocks(wait_for_pulsed_clocks_to_finish=False, timeout_duration_s=-1)
+    device.start_clocks(wait_for_pulsed_clocks_to_finish=False)
 
     # Check if the clock is running
     assert clock_channel.clock_enabled
@@ -109,22 +120,24 @@ def test_start_clocks_with_duration(device: ClockDaqDevice):
     available_clock_channels = device.get_available_output_clock_channels()
 
     clock_channels = []
-    for channel in available_clock_channels:
-        clock_channels.append(device.add_clock_channel(clock_tick_rate_hz=30))
-
     expected_duration = 1.0
+    for channel in available_clock_channels:
+        clock_channels.append(
+            device.add_clock_channel(
+                clock_tick_rate_hz=30, duration_s=expected_duration
+            )
+        )
+
     t_start = time.time()
-    device.start_clocks(
-        wait_for_pulsed_clocks_to_finish=False, timeout_duration_s=expected_duration
-    )
+    device.start_clocks(wait_for_pulsed_clocks_to_finish=True)
     duration = time.time() - t_start
     assert duration > 0.95 * expected_duration and duration < 1.1 * expected_duration
 
-    device.stop_clocks()
-
+    # Test mutual exclusivity of duration_s and number_of_pulses
+    device.clear_clocks()
     with pytest.raises(XClockValueError):
-        device.start_clocks(
-            wait_for_pulsed_clocks_to_finish=True, timeout_duration_s=1.0
+        device.add_clock_channel(
+            clock_tick_rate_hz=30, duration_s=1.0, number_of_pulses=100
         )
 
 
@@ -173,7 +186,6 @@ def test_streaming(device: ClockDaqDevice, tmp_path):
         enable_clock_now=False,
     )
     device.start_clocks_and_record_edge_timestamps(
-        timeout_duration_s=0,
         wait_for_pulsed_clocks_to_finish=True,
         filename=tmp_path / "foo.csv",
     )
@@ -209,7 +221,11 @@ def test_streaming_with_separate_streamer(device: ClockDaqDevice):
     # Setup LabJack
 
     number_of_pulses = 6
-    device.add_clock_channel(100, "DIO6", number_of_pulses=number_of_pulses)
+    device.add_clock_channel(
+        clock_tick_rate_hz=100,
+        channel_name="DIO6",
+        number_of_pulses=number_of_pulses,
+    )
 
     channel_names = ["EIO6"]
     streamer = LabJackEdgeStreamer(

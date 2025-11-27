@@ -1,8 +1,9 @@
-from xclock.devices.daq_device import ClockDaqDevice, EdgeType, ClockChannel
-from pathlib import Path
 import logging
 import time
+from pathlib import Path
 from typing import List
+
+from xclock.devices.daq_device import ClockChannel, ClockDaqDevice, EdgeType
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +39,23 @@ class DummyDaqDevice(ClockDaqDevice):
         clock_tick_rate_hz: int | float,
         channel_name: str | None = None,
         number_of_pulses: int | None = None,
+        duration_s: float | None = None,
         enable_clock_now: bool = False,
     ) -> ClockChannel:
         """Add a clock channel to the device."""
+        # Check for mutual exclusivity of duration_s and number_of_pulses
+        if duration_s is not None and number_of_pulses is not None:
+            raise ValueError(
+                "duration_s and number_of_pulses are mutually exclusive. Provide only one."
+            )
+
+        # Auto-calculate number of pulses from duration if provided
+        if duration_s is not None:
+            number_of_pulses = int(duration_s * clock_tick_rate_hz)
+            logger.debug(
+                f"Auto-calculated {number_of_pulses} pulses from duration {duration_s}s at {clock_tick_rate_hz} Hz"
+            )
+
         # Auto-select channel if not specified
         if channel_name is None:
             unused_channels = self.get_unused_clock_channel_names()
@@ -102,7 +117,6 @@ class DummyDaqDevice(ClockDaqDevice):
     def start_clocks(
         self,
         wait_for_pulsed_clocks_to_finish: bool = False,
-        timeout_duration_s: float = 0.0,
     ):
         """Start all added clock channels."""
         if not self._clock_channels:
@@ -126,12 +140,8 @@ class DummyDaqDevice(ClockDaqDevice):
                     max_duration = max(max_duration, duration)
 
             if max_duration > 0:
-                wait_time = max_duration
-                if timeout_duration_s > 0:
-                    wait_time = min(wait_time, timeout_duration_s)
-
-                logger.info(f"Waiting {wait_time:.3f}s for pulsed clocks to finish")
-                time.sleep(wait_time)
+                logger.info(f"Waiting {max_duration:.3f}s for pulsed clocks to finish")
+                time.sleep(max_duration)
 
                 # Disable pulsed clocks after they finish
                 for channel in self._clock_channels:
@@ -141,7 +151,6 @@ class DummyDaqDevice(ClockDaqDevice):
     def start_clocks_and_record_edge_timestamps(
         self,
         wait_for_pulsed_clocks_to_finish: bool = True,
-        timeout_duration_s: float = 0.0,
         extra_channels: list[str] = [],
         filename: Path | str | None = None,
     ):
@@ -165,7 +174,6 @@ class DummyDaqDevice(ClockDaqDevice):
         # Start clocks
         self.start_clocks(
             wait_for_pulsed_clocks_to_finish=wait_for_pulsed_clocks_to_finish,
-            timeout_duration_s=timeout_duration_s,
         )
 
         # Generate dummy timestamp data

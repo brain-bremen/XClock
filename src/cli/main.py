@@ -5,8 +5,7 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
-
-from xclock.devices import ClockDaqDevice, LabJackT4, DummyDaqDevice
+from xclock.devices import ClockDaqDevice, DummyDaqDevice, LabJackT4
 from xclock.errors import XClockException, XClockValueError
 
 logger = logging.getLogger(__name__)
@@ -72,10 +71,17 @@ def setup_clocks(
     device: ClockDaqDevice,
     clock_rates: List[float],
     number_of_pulses: Optional[List[int]] = None,
+    duration_s: Optional[float] = None,
 ) -> None:
     """Setup clock channels on the device."""
     if not clock_rates:
         raise XClockValueError("At least one clock rate must be specified")
+
+    # Check for mutual exclusivity of duration_s and number_of_pulses
+    if duration_s is not None and number_of_pulses is not None:
+        raise XClockValueError(
+            "duration and number-of-pulses are mutually exclusive. Provide only one."
+        )
 
     available_channels = device.get_available_output_clock_channels()
 
@@ -87,11 +93,13 @@ def setup_clocks(
 
     # Setup each clock channel
     for i, rate in enumerate(clock_rates):
-        pulses = (
-            number_of_pulses[i]
-            if number_of_pulses and i < len(number_of_pulses)
-            else None
-        )
+        pulses = None
+
+        if number_of_pulses is not None:
+            pulses = number_of_pulses[i] if i < len(number_of_pulses) else None
+        elif duration_s is not None:
+            # Auto-calculate pulses from duration for this specific clock rate
+            pulses = int(duration_s * rate)
 
         channel = device.add_clock_channel(
             clock_tick_rate_hz=rate,
@@ -100,7 +108,13 @@ def setup_clocks(
             enable_clock_now=False,
         )
 
-        pulse_info = f" ({pulses} pulses)" if pulses else " (continuous)"
+        if pulses is not None:
+            pulse_info = f" ({pulses} pulses"
+            if duration_s is not None:
+                pulse_info += f", ~{duration_s}s"
+            pulse_info += ")"
+        else:
+            pulse_info = " (continuous)"
         logger.info(f"Added clock: {rate} Hz on {channel.channel_name}{pulse_info}")
 
 
@@ -125,10 +139,17 @@ def cmd_start(args) -> None:
             ]
 
         # Setup clocks
-        setup_clocks(device, args.clock_tick_rates, pulses)
+        setup_clocks(
+            device,
+            args.clock_tick_rates,
+            pulses,
+            args.duration if args.duration > 0 else None,
+        )
 
         # Determine if we have pulsed clocks
-        has_pulsed_clocks = pulses is not None and any(p > 0 for p in pulses)
+        has_pulsed_clocks = (
+            pulses is not None and any(p > 0 for p in pulses)
+        ) or args.duration > 0
 
         # Handle when to start
         if args.when == "on_trigger":
@@ -177,7 +198,6 @@ def cmd_start(args) -> None:
 
             device.start_clocks_and_record_edge_timestamps(
                 wait_for_pulsed_clocks_to_finish=has_pulsed_clocks,
-                timeout_duration_s=args.duration if args.duration > 0 else 0.0,
                 filename=filename,
                 extra_channels=extra_channels,
             )
@@ -185,13 +205,10 @@ def cmd_start(args) -> None:
         else:
             device.start_clocks(
                 wait_for_pulsed_clocks_to_finish=has_pulsed_clocks,
-                timeout_duration_s=args.duration if args.duration > 0 else 0.0,
             )
 
         if has_pulsed_clocks:
             logger.info("All pulsed clocks finished.")
-        elif args.duration > 0:
-            logger.info(f"Clocks ran for {args.duration} seconds.")
         elif not args.record_timestamps:
             logger.info("Clocks started. Use Ctrl+C to stop.")
             try:
@@ -272,13 +289,13 @@ Examples:
         "--duration",
         type=float,
         default=0,
-        help="Duration to run clocks in seconds (0 = run until stopped)",
+        help="Duration to run clocks in seconds - auto-calculates pulses per clock (mutually exclusive with --number-of-pulses)",
     )
 
     parser.add_argument(
         "--number-of-pulses",
         type=str,
-        help="Comma-separated number of pulses for each clock (for pulsed mode)",
+        help="Comma-separated number of pulses for each clock (mutually exclusive with --duration)",
     )
 
     parser.add_argument(

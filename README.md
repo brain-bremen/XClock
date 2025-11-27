@@ -2,21 +2,21 @@
 
 ![](resources/logo_with_clock_signals.png)
 
-
 XClock is a Python package designed to help synchronize data acquisition clocks in
 experimental setups, particularly for neuroscience and behavioral experiments. It provides
 tools to generate precise clock signals using various data acquisition (DAQ) devices, such
-as the [LabJack T4](https://labjack.com/products/labjack-t4). 
+as the [LabJack T4](https://labjack.com/products/labjack-t4).
 
-XClock allows you to 
+XClock allows you to
+
 - output **multiple clock frequencies simultaneously**, all synchronized to the same
-  internal clock source to ensure precise timing alignment. 
+  internal clock source to ensure precise timing alignment.
 - record the timestamps of the clock pulses relative to the internal DAQ device clock
 
 The given output pulses can be used to trigger and synchronize industrial cameras used for
-behavioral monitoring or two-photon imaging. 
+behavioral monitoring or two-photon imaging.
 
-*Note*: This Python project is not the [clock for the original X Window
+_Note_: This Python project is not the [clock for the original X Window
 System](https://www.x.org/archive/X11R7.6/doc/man/man1/xclock.1.xhtml).
 
 [![Python Tests](https://github.com/brain-bremen/XClock/actions/workflows/python-tests.yml/badge.svg)](https://github.com/brain-bremen/XClock/actions/workflows/python-tests.yml)
@@ -25,25 +25,25 @@ System](https://www.x.org/archive/X11R7.6/doc/man/man1/xclock.1.xhtml).
 
 1. Install the software for you DAQ device, e.g. for the LabJack T Series from [here](https://support.labjack.com/docs/ljm-software-installer-downloads-t4-t7-t8-digit).
 
+2. Install the `xclock` package.
 
-2. Install the `xclock` package. 
-  ```bash
-  # via pip
-  pip install git+http://github.com/brain-bremen/XClock.git
+```bash
+# via pip
+pip install git+http://github.com/brain-bremen/XClock.git
 
-  # via uv (recommended)
-  uv add git+https://github.com/brain-bremen/XClock.git
-  ```
+# via uv (recommended)
+uv add git+https://github.com/brain-bremen/XClock.git
+```
 
 3. Verify installation by running the CLI tool:
-  ```bash
-  xclock --help
-  ```
+
+```bash
+xclock --help
+```
 
 ## Use `xclock` library in your Python scripts
 
-To use your DAQ device as a clock 
-
+To use your DAQ device as a clock
 
 ```python
 from xclock.devices import LabJackT4
@@ -53,19 +53,20 @@ import numpy as np
 t4 = LabJackT4()
 available_clock_channels = t4.get_available_output_clock_channels()
 
-# add two clocks with a defined number of clock pulses (~10 s)
+# add two clocks with a defined duration (~10 s)
+# pulses are auto-calculated: 100 Hz * 10s = 1000 pulses, 60 Hz * 10s = 600 pulses
 t4.add_clock_channel(
     clock_tick_rate_hz=100,
     channel_name=available_clock_channels[0],
     enable_clock_now=False,
-    number_of_pulses=1000,
+    duration_s=10.0,
 )
 
 t4.add_clock_channel(
     clock_tick_rate_hz=60,
     channel_name=available_clock_channels[1],
     enable_clock_now=False,
-    number_of_pulses=600, 
+    duration_s=10.0,
 )
 
 output_filename = pathlib.Path.home() / "Documents" / "XClock" / "foo.csv"
@@ -126,10 +127,10 @@ xclock [OPTIONS] COMMAND
 ### Examples
 
 ```bash
-# Start two continuous clocks at 60Hz and 100Hz for 10 seconds
+# Start two clocks at 60Hz and 100Hz for 10 seconds (pulses auto-calculated)
 xclock --clock-tick-rates 60,100 --duration 10 start
 
-# Generate pulsed clocks: 200 pulses at 60Hz, 150 pulses at 100Hz
+# Generate pulsed clocks with explicit pulse counts: 200 pulses at 60Hz, 150 pulses at 100Hz
 xclock --clock-tick-rates 60,100 --number-of-pulses 200,150 start
 
 # Wait for external trigger before starting clocks
@@ -148,6 +149,7 @@ xclock --clock-tick-rates 60,100 --verbose --duration 5 start
 ### Trigger Mode
 
 When using `--when on_trigger`, the CLI will:
+
 1. Configure the clocks but not start them
 2. Wait for a rising edge on the device's trigger input (e.g. DIO4 for LabJack T4)
 3. Start clocks immediately when a trigger is detected
@@ -156,6 +158,7 @@ When using `--when on_trigger`, the CLI will:
 ### Timestamp Recording
 
 When using `--record-timestamps`, the CLI will:
+
 - Monitor clock outputs and record all edge transitions
 - Save timestamps to `~/Documents/XClock/xclock_timestamps_<date>.csv`
 - Format: `timestamp_ns, edge_type` (<0: falling edge, >0: rising edge, number is clock channel index)
@@ -165,7 +168,6 @@ When using `--record-timestamps`, the CLI will:
 Currently only the LabJack T4 is supported to be used as a clock device. The recommended and supported wiring is as follows:
 
 ![](resources/labjack_t4_wiring.png)
-
 
 ## Adding a different, unsupported device as a clock
 

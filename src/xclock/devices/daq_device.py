@@ -49,6 +49,7 @@ class ClockDaqDevice(ABC):
         clock_tick_rate_hz: int | float,
         channel_name: str | None = None,
         number_of_pulses: int | None = None,  # None: continuous output
+        duration_s: float | None = None,  # Auto-calculate pulses from duration
         enable_clock_now: bool = False,
     ) -> ClockChannel:
         pass
@@ -66,7 +67,6 @@ class ClockDaqDevice(ABC):
     def start_clocks(
         self,
         wait_for_pulsed_clocks_to_finish: bool = False,
-        timeout_duration_s: float = 0.0,
     ):
         pass
 
@@ -74,7 +74,6 @@ class ClockDaqDevice(ABC):
     def start_clocks_and_record_edge_timestamps(
         self,
         wait_for_pulsed_clocks_to_finish: bool = True,  # if there are pulsed clocks, extend wait duration until pulsed clocks are finished
-        timeout_duration_s: float = 0.0,
         extra_channels: list[str] = [],
         filename: Path
         | str

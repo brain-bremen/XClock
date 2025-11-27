@@ -325,22 +325,16 @@ class LabJackT4(ClockDaqDevice):
     @override
     def start_clocks(
         self,
-        wait_for_pulsed_clocks_to_finish: bool = False,  # return before timeout if pulsed clocks are finished
-        timeout_duration_s: float = 0.0,  # return after timeout if timeout > 0
+        wait_for_pulsed_clocks_to_finish: bool = False,
         delay_after_last_pulse_s: float = 0.1,
     ):
         """
-        Starts the configured clocks on the LabJack T4 device. This function has three
-        modes:
+        Starts the configured clocks on the LabJack T4 device. This function has two modes:
 
         (1) If `wait_for_pulsed_clocks_to_finish` is True, the function will wait until all
-            pulsed locks are finished (potentially forever).
+            pulsed clocks are finished (potentially forever).
 
-        (2) If `timeout_duration_s` is >0 and ,`wait_for_pulsed_clocks_to_finish` is False,
-            the function will wait until the timeout duration has passed.
-
-        (3) If `wait_for_pulsed_clocks_to_finish` is False and `timeout_duration_s` is <= 0,
-            the function will return immediately.
+        (2) If `wait_for_pulsed_clocks_to_finish` is False, the function will return immediately.
 
 
         """
@@ -354,11 +348,6 @@ class LabJackT4(ClockDaqDevice):
         if len(self._clock_channels) == 0:
             raise XClockException(
                 "No clock channels configured. Use add_clock_channel() first"
-            )
-
-        if wait_for_pulsed_clocks_to_finish is True and timeout_duration_s > 0:
-            raise XClockValueError(
-                "wait_for_pulsed_clocks_to_finish cannot be True with a timeout_duration_s > 0. These options are mutually exclusive."
             )
 
         config = {DigIoRegisters(self._clock_on_indicator_channel).channel: 1}
@@ -404,20 +393,6 @@ class LabJackT4(ClockDaqDevice):
             )
             for clock in pulsed_clocks:
                 clock.clock_enabled = False
-            return
-
-        if timeout_duration_s > 0.0:
-            logger.debug(f"Waiting for timeout of {timeout_duration_s} s")
-            # use ljm intervals to wait for duartion
-            interval_us = int(1e6 * timeout_duration_s)
-            interval_handle = 1  # Use 1 as the interval handle ID
-            ljm.startInterval(interval_handle, interval_us)
-            try:
-                ljm.waitForNextInterval(interval_handle)
-            finally:
-                ljm.cleanInterval(interval_handle)
-
-            self.stop_clocks()
 
     @override
     def stop_clocks(self):
@@ -451,6 +426,7 @@ class LabJackT4(ClockDaqDevice):
         clock_tick_rate_hz: int | float,
         channel_name: str | None = None,
         number_of_pulses: int | None = None,  # None: continuous output
+        duration_s: float | None = None,  # Auto-calculate pulses from duration
         enable_clock_now: bool = False,
     ) -> ClockChannel:
         if self.handle is None:
@@ -458,6 +434,19 @@ class LabJackT4(ClockDaqDevice):
         if len(self._unused_clock_channel_names) == 0:
             raise XClockException(
                 "No more clock channels available. Used channels: {self._used_clock_channels}"
+            )
+
+        # Check for mutual exclusivity of duration_s and number_of_pulses
+        if duration_s is not None and number_of_pulses is not None:
+            raise XClockValueError(
+                "duration_s and number_of_pulses are mutually exclusive. Provide only one."
+            )
+
+        # Auto-calculate number of pulses from duration if provided
+        if duration_s is not None:
+            number_of_pulses = int(duration_s * clock_tick_rate_hz)
+            logger.debug(
+                f"Auto-calculated {number_of_pulses} pulses from duration {duration_s}s at {clock_tick_rate_hz} Hz"
             )
 
         f_min = self.base_clock_frequency_hz / self.divisor / 2**16
@@ -529,7 +518,6 @@ class LabJackT4(ClockDaqDevice):
     def start_clocks_and_record_edge_timestamps(
         self,
         wait_for_pulsed_clocks_to_finish: bool = True,
-        timeout_duration_s: float = 0.0,
         extra_channels: list[
             str
         ] = [],  # record edge timestamps also on these channels in addition to clocks
@@ -554,7 +542,6 @@ class LabJackT4(ClockDaqDevice):
         time.sleep(0.5)
         self.start_clocks(
             wait_for_pulsed_clocks_to_finish=wait_for_pulsed_clocks_to_finish,
-            timeout_duration_s=timeout_duration_s,
         )
 
         self.stop_clocks()

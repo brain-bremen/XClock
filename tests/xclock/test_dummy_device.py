@@ -4,11 +4,13 @@ Tests for DummyDaqDevice implementation.
 This demonstrates how to test a device implementation.
 """
 
-import pytest
 import time
-from xclock.errors import XClockException
+
+import pytest
+
 from xclock.devices import ClockDaqDevice
 from xclock.devices.dummy_daq_device import DummyDaqDevice
+from xclock.errors import XClockException
 
 DEVICE_NAME = "Dummy Device"
 DEVICE_CLASS = DummyDaqDevice
@@ -42,7 +44,10 @@ def test_add_clock_channel(device: ClockDaqDevice):
 
     assert len(available_clock_channels) > 0
     clock_channel = device.add_clock_channel(
-        100, available_clock_channels[0], None, False
+        clock_tick_rate_hz=100,
+        channel_name=available_clock_channels[0],
+        number_of_pulses=None,
+        enable_clock_now=False,
     )
     assert clock_channel.actual_sample_rate_hz == 100
     assert clock_channel.channel_name == available_clock_channels[0]
@@ -51,7 +56,12 @@ def test_add_clock_channel(device: ClockDaqDevice):
 
     # nonexistant channel must fail
     with pytest.raises((XClockException, ValueError)):
-        device.add_clock_channel(100, "NONEXISTANT_CHANNEL", None, False)
+        device.add_clock_channel(
+            clock_tick_rate_hz=100,
+            channel_name="NONEXISTANT_CHANNEL",
+            number_of_pulses=None,
+            enable_clock_now=False,
+        )
 
     for channel in available_clock_channels[1:]:
         device.add_clock_channel(
@@ -79,11 +89,14 @@ def test_start_and_stop_clocks(device: ClockDaqDevice):
 
     # Add a clock channel
     clock_channel = device.add_clock_channel(
-        100, available_clock_channels[0], number_of_pulses=None, enable_clock_now=False
+        clock_tick_rate_hz=100,
+        channel_name=available_clock_channels[0],
+        number_of_pulses=None,
+        enable_clock_now=False,
     )
 
     # Start the clock
-    device.start_clocks(wait_for_pulsed_clocks_to_finish=False, timeout_duration_s=0)
+    device.start_clocks(wait_for_pulsed_clocks_to_finish=False)
 
     # Check if the clock is running
     assert clock_channel.clock_enabled
@@ -113,23 +126,27 @@ def test_automatic_clock_channel_selection(device: ClockDaqDevice):
 
 @pytest.mark.skipif(not hardware_available, reason=f"{DEVICE_NAME} not available")
 def test_start_clocks_with_duration(device: ClockDaqDevice):
-    """Test starting clocks with a timeout duration."""
+    """Test starting clocks with a duration parameter."""
     available_clock_channels = device.get_available_output_clock_channels()
     assert len(available_clock_channels) > 0
 
-    # Add a clock channel
+    expected_duration = 0.1
+    # Add a clock channel with duration
     clock_channel = device.add_clock_channel(
-        100, available_clock_channels[0], number_of_pulses=None, enable_clock_now=False
+        100,
+        available_clock_channels[0],
+        duration_s=expected_duration,
+        enable_clock_now=False,
     )
 
-    # Start the clock with a short duration
+    # Start the clock with duration-based pulses
     start_time = time.time()
-    device.start_clocks(wait_for_pulsed_clocks_to_finish=False, timeout_duration_s=0.1)
+    device.start_clocks(wait_for_pulsed_clocks_to_finish=True)
     elapsed_time = time.time() - start_time
 
-    # Should return quickly since we're not waiting
-    assert elapsed_time < 0.5
-    assert clock_channel.clock_enabled
+    # Should have waited for the duration
+    assert elapsed_time >= expected_duration * 0.8
+    assert not clock_channel.clock_enabled
 
 
 @pytest.mark.skipif(not hardware_available, reason=f"{DEVICE_NAME} not available")
@@ -143,8 +160,8 @@ def test_start_pulsed_clocks_and_wait_for_finish(device: ClockDaqDevice):
 
     # Add a pulsed clock channel
     clock_channel = device.add_clock_channel(
-        sample_rate_hz,
-        available_clock_channels[0],
+        clock_tick_rate_hz=sample_rate_hz,
+        channel_name=available_clock_channels[0],
         number_of_pulses=number_of_pulses,
         enable_clock_now=False,
     )
@@ -166,7 +183,11 @@ def test_start_pulsed_clocks_and_wait_for_finish(device: ClockDaqDevice):
 def test_streaming(device: ClockDaqDevice, tmp_path):
     """Test timestamp recording functionality."""
     # Add a clock channel
-    device.add_clock_channel(1000, "FOOCLK1", number_of_pulses=10)
+    device.add_clock_channel(
+        clock_tick_rate_hz=1000,
+        channel_name="FOOCLK1",
+        number_of_pulses=10,
+    )
 
     # Record timestamps to a temporary file
     timestamp_file = tmp_path / "test_timestamps.csv"

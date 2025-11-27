@@ -1,6 +1,8 @@
 from pathlib import Path
-from xclock.devices.daq_device import ClockChannel, ClockDaqDevice, EdgeType
+
 from u3 import U3
+
+from xclock.devices.daq_device import ClockChannel, ClockDaqDevice, EdgeType
 
 # TODO:
 # - figure out which pins can be used for clocks, edge detection inputs and trigger output
@@ -28,6 +30,7 @@ class LabJackU3(ClockDaqDevice):
         clock_tick_rate_hz: int | float,
         channel_name: str | None = None,
         number_of_pulses: int | None = None,
+        duration_s: float | None = None,
         enable_clock_now: bool = False,
     ) -> ClockChannel:
         raise NotImplementedError()
@@ -35,14 +38,12 @@ class LabJackU3(ClockDaqDevice):
     def start_clocks(
         self,
         wait_for_pulsed_clocks_to_finish: bool = False,
-        timeout_duration_s: float = 0,
     ):
         raise NotImplementedError()
 
     def start_clocks_and_record_edge_timestamps(
         self,
         wait_for_pulsed_clocks_to_finish: bool = True,
-        timeout_duration_s: float = 0,
         extra_channels: list[str] = [],
         filename: Path | str | None = None,
     ):
