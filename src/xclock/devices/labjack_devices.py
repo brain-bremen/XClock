@@ -693,28 +693,40 @@ class LabJackEdgeStreamer:
         """
         # Store the raw timer value for rollover detection in next iteration
         # We need to detect rollover BEFORE applying offset, so we compare raw-to-raw
-        raw_timer_value = data[0, -1]
+        raw_timer_values = data[:, -1]
 
-        # Detect and handle CORE_TIMER rollover (UINT32 wraps at 2^32)
-        if self._last_row[0, -1] > 0:  # Skip first iteration
-            # Check if any timer value rolled over
-            # Rollover detected when current value is much smaller than previous
-            # Use threshold of 2^31 to detect rollover (half of UINT32 range)
-            timer_diff = raw_timer_value - self._last_row[0, -1]
+        # Prepend the last value from the previous batch to detect rollover at the start
+        extended_timers = np.concatenate(([self._last_row[0, -1]], raw_timer_values))
 
-            # If first value in this batch is significantly smaller than last value
-            # from previous batch, a rollover occurred
-            if raw_timer_value < self._last_row[0, -1] and timer_diff < -(2**31):
-                self._timer_rollover_count += 1
-                self._timer_offset += np.int64(2**32)
-                logger.info(
-                    f"CORE_TIMER rollover detected (rollover #{self._timer_rollover_count}). "
-                    f"Previous (raw): {self._last_row[0, -1]}, Current (raw): {raw_timer_value}, "
-                    f"New offset: {self._timer_offset}"
-                )
+        # Calculate differences between consecutive elements
+        diffs = np.diff(extended_timers)
 
-        # Apply cumulative offset to handle all previous rollovers
-        data[:, -1] += self._timer_offset
+        # Detect rollovers (large negative drop)
+        # Threshold: -2^31 (half of UINT32 range)
+        rollover_mask = diffs < -(2**31)
+
+        if np.any(rollover_mask):
+            rollover_count = np.sum(rollover_mask)
+            self._timer_rollover_count += rollover_count
+
+            # Calculate cumulative offset additions for this batch
+            # Each True in rollover_mask means a wrap occurred at that index
+            # We want to add 2^32 to that index and all subsequent indices in this batch
+            batch_increments = np.cumsum(rollover_mask) * np.int64(2**32)
+
+            # Apply offsets: existing global offset + new increments from this batch
+            data[:, -1] += self._timer_offset + batch_increments
+
+            # Update global offset for next batch
+            self._timer_offset += batch_increments[-1]
+
+            logger.info(
+                f"CORE_TIMER rollover(s) detected: {rollover_count}. "
+                f"New offset: {self._timer_offset}"
+            )
+        else:
+            # No new rollovers, just apply existing offset
+            data[:, -1] += self._timer_offset
 
         return data
 
@@ -857,18 +869,18 @@ if __name__ == "__main__":
         t4 = LabJackT4()
         available_clock_channels = t4.get_available_output_clock_channels()
 
-        t4.add_clock_channel(
+        _ = t4.add_clock_channel(
             clock_tick_rate_hz=75,
             channel_name=available_clock_channels[0],
             enable_clock_now=False,
-            number_of_pulses=10,
+            duration_s=500,
         )
 
-        t4.add_clock_channel(
+        _ = t4.add_clock_channel(
             clock_tick_rate_hz=30,
             channel_name=available_clock_channels[1],
             enable_clock_now=False,
-            number_of_pulses=5,
+            number_of_pulses=500,
         )
 
         print(t4)
