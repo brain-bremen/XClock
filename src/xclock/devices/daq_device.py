@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 
@@ -19,7 +19,7 @@ class ClockChannel:
 
 
 class ClockDaqDevice(ABC):
-    handle: int
+    handle: int | None
     base_clock_frequency_hz: int | float
 
     # TODO: These static methods should be non-static as they are more useful

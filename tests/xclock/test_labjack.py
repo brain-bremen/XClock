@@ -1,9 +1,11 @@
-import pytest
 import time
-from xclock.errors import XClockException, XClockValueError
+
+import numpy as np
+import pytest
+
 from xclock.devices import ClockDaqDevice
 from xclock.devices.labjack_devices import LabJackEdgeStreamer, LabJackT4
-import numpy as np
+from xclock.errors import XClockException, XClockValueError
 
 DEVICE_NAME = "LabJack T4"
 DEVICE_CLASS = LabJackT4
@@ -221,3 +223,124 @@ def test_streaming_with_separate_streamer(device: ClockDaqDevice):
     streamer.stop_streaming()
 
     assert streamer.number_of_detected_edges == number_of_pulses * 2
+
+
+def test_timer_rollover_detection():
+    """Test CORE_TIMER rollover detection logic with synthetic data."""
+    # Simulate the rollover detection logic from LabJackEdgeStreamer
+
+    UINT32_MAX = 2**32
+    ROLLOVER_THRESHOLD = -(2**31)
+
+    # Test case 1: Normal incremental values (no rollover)
+    last_timer = np.int64(1000000)
+    current_batch = np.array([1000100, 1000200, 1000300], dtype=np.int64)
+
+    timer_offset = np.int64(0)
+    rollover_count = 0
+
+    if last_timer > 0:
+        timer_diff = current_batch - last_timer
+        if current_batch[0] < last_timer and timer_diff[0] < ROLLOVER_THRESHOLD:
+            rollover_count += 1
+            timer_offset += np.int64(UINT32_MAX)
+
+    current_batch += timer_offset
+
+    assert rollover_count == 0, (
+        "Should not detect rollover for normal incremental values"
+    )
+    assert timer_offset == 0, "Offset should remain 0"
+    assert np.all(current_batch == [1000100, 1000200, 1000300])
+
+    # Test case 2: Rollover occurs (timer wraps from near UINT32_MAX to 0)
+    last_timer = np.int64(UINT32_MAX - 100)  # Close to rollover
+    current_batch = np.array([50, 150, 250], dtype=np.int64)  # After rollover
+
+    timer_offset = np.int64(0)
+    rollover_count = 0
+
+    if last_timer > 0:
+        timer_diff = current_batch - last_timer
+        if current_batch[0] < last_timer and timer_diff[0] < ROLLOVER_THRESHOLD:
+            rollover_count += 1
+            timer_offset += np.int64(UINT32_MAX)
+
+    current_batch_corrected = current_batch + timer_offset
+
+    assert rollover_count == 1, "Should detect rollover"
+    assert timer_offset == UINT32_MAX, f"Offset should be 2^32, got {timer_offset}"
+    # After correction, values should be monotonically increasing
+    assert current_batch_corrected[0] > last_timer, (
+        "First value should be greater than last after correction"
+    )
+    assert np.all(np.diff(current_batch_corrected) > 0), (
+        "Values should be monotonically increasing"
+    )
+
+    # Test case 3: Multiple rollovers (second rollover)
+    last_timer = current_batch_corrected[-1]  # Last value from previous batch
+    current_batch = np.array([UINT32_MAX - 50, UINT32_MAX - 25, 10], dtype=np.int64)
+
+    # First part of batch before second rollover
+    timer_diff = current_batch - last_timer
+    if current_batch[0] < last_timer and timer_diff[0] < ROLLOVER_THRESHOLD:
+        rollover_count += 1
+        timer_offset += np.int64(UINT32_MAX)
+
+    current_batch_corrected = current_batch + timer_offset
+
+    assert rollover_count == 2, "Should detect second rollover"
+    assert timer_offset == 2 * UINT32_MAX, (
+        f"Offset should be 2*2^32, got {timer_offset}"
+    )
+    assert current_batch_corrected[0] > last_timer, (
+        "Values should continue increasing after second rollover"
+    )
+
+    # Test case 4: Edge case - small backward jump (should not trigger rollover)
+    last_timer = np.int64(1000000)
+    current_batch = np.array(
+        [999999, 1000000, 1000001], dtype=np.int64
+    )  # Small backward jump
+
+    timer_offset = np.int64(0)
+    rollover_count = 0
+
+    if last_timer > 0:
+        timer_diff = current_batch - last_timer
+        if current_batch[0] < last_timer and timer_diff[0] < ROLLOVER_THRESHOLD:
+            rollover_count += 1
+            timer_offset += np.int64(UINT32_MAX)
+
+    assert rollover_count == 0, "Should not detect rollover for small backward jump"
+    assert timer_offset == 0, "Offset should remain 0 for small backward jump"
+
+    print("All rollover detection tests passed!")
+
+
+@pytest.mark.skipif(not hardware_available, reason=f"{DEVICE_NAME} not available")
+def test_timer_rollover_in_streamer():
+    """Test that LabJackEdgeStreamer correctly initializes rollover tracking variables."""
+    if not hardware_available:
+        pytest.skip(f"{DEVICE_NAME} hardware not available")
+
+    channel_names = ["DIO6"]
+    streamer = LabJackEdgeStreamer(
+        daq_device.handle,
+        channel_names,
+        daq_device.base_clock_frequency_hz,
+        scan_rate_hz=1000,
+    )
+
+    # Verify rollover tracking variables are initialized
+    assert hasattr(streamer, "_timer_rollover_count"), (
+        "Streamer should have _timer_rollover_count attribute"
+    )
+    assert hasattr(streamer, "_timer_offset"), (
+        "Streamer should have _timer_offset attribute"
+    )
+    assert streamer._timer_rollover_count == 0, "Initial rollover count should be 0"
+    assert streamer._timer_offset == 0, "Initial timer offset should be 0"
+
+    print("Streamer rollover tracking initialization test passed!")
