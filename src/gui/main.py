@@ -64,7 +64,7 @@ class XClockGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("XClock Control Panel")
-        self.root.geometry("700x600")
+        self.root.geometry("700x850")
 
         self.device: Optional[ClockDaqDevice] = None
         self.is_running = False
@@ -118,6 +118,19 @@ class XClockGUI:
         main_frame.columnconfigure(1, weight=1)
 
         row = 0
+
+        # Logo
+        try:
+            logo_path = Path(__file__).parent.parent.parent / "resources" / "logo.png"
+            if logo_path.exists():
+                # Downscale the logo by a factor of 2 to save space
+                self.logo_image = tk.PhotoImage(file=str(logo_path)).subsample(2, 2)
+                ttk.Label(main_frame, image=self.logo_image).grid(
+                    row=row, column=0, columnspan=3, pady=(0, 10)
+                )
+                row += 1
+        except Exception as e:
+            self.logger.warning(f"Failed to load logo: {e}")
 
         # Device selection
         ttk.Label(main_frame, text="Device:").grid(
