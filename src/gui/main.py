@@ -2,6 +2,7 @@ import logging
 import sys
 import threading
 import tkinter as tk
+import json
 from pathlib import Path
 from tkinter import scrolledtext, ttk
 from typing import Optional
@@ -14,6 +15,8 @@ DEVICE_MAP = {
     "LabJack T4": LabJackT4,
     "Dummy DAQ Device": DummyDaqDevice,
 }
+
+SETTINGS_FILE = Path.home() / "Documents" / "XClock" / "xclock_settings.json"
 
 
 def check_device_availability(device_class):
@@ -71,6 +74,8 @@ class XClockGUI:
         self.setup_logging()
         self.check_devices()
         self.create_widgets()
+        self.load_settings()
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def check_devices(self):
         """Check which devices are available."""
@@ -536,6 +541,66 @@ class XClockGUI:
                 self.logger.error(f"Error closing device: {e}")
         
         self.device = None
+
+    def load_settings(self):
+        """Load settings from JSON file."""
+        if not SETTINGS_FILE.exists():
+            return
+
+        try:
+            with open(SETTINGS_FILE, "r") as f:
+                settings = json.load(f)
+
+            if "device" in settings and settings["device"] in self.available_devices:
+                self.device_var.set(settings["device"])
+            if "rates" in settings:
+                self.rates_var.set(settings["rates"])
+            if "mode" in settings:
+                self.mode_var.set(settings["mode"])
+                self.on_mode_change()
+            if "duration" in settings:
+                self.duration_var.set(settings["duration"])
+            if "pulses" in settings:
+                self.pulses_var.set(settings["pulses"])
+            if "record_timestamps" in settings:
+                self.record_timestamps_var.set(settings["record_timestamps"])
+            if "extra_channels" in settings:
+                self.extra_channels_var.set(settings["extra_channels"])
+            if "verbose" in settings:
+                self.verbose_var.set(settings["verbose"])
+                self.on_verbose_change()
+
+            self.logger.info(f"Settings loaded from {SETTINGS_FILE}")
+        except Exception as e:
+            self.logger.error(f"Failed to load settings: {e}")
+
+    def save_settings(self):
+        """Save current settings to JSON file."""
+        settings = {
+            "device": self.device_var.get(),
+            "rates": self.rates_var.get(),
+            "mode": self.mode_var.get(),
+            "duration": self.duration_var.get(),
+            "pulses": self.pulses_var.get(),
+            "record_timestamps": self.record_timestamps_var.get(),
+            "extra_channels": self.extra_channels_var.get(),
+            "verbose": self.verbose_var.get(),
+        }
+
+        try:
+            SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(SETTINGS_FILE, "w") as f:
+                json.dump(settings, f, indent=4)
+            self.logger.info(f"Settings saved to {SETTINGS_FILE}")
+        except Exception as e:
+            self.logger.error(f"Failed to save settings: {e}")
+
+    def on_closing(self):
+        """Handle window closing event."""
+        self.save_settings()
+        if self.is_running:
+            self.stop_clocks()
+        self.root.destroy()
 
 
 def main():
