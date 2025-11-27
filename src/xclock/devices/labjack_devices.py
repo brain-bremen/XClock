@@ -5,13 +5,14 @@ import threading
 import time
 from enum import IntEnum
 from pathlib import Path
+from typing import final, override
 
-import numpy as np
 import labjack.ljm as ljm
+import numpy as np
 
 from xclock.devices.daq_device import ClockChannel, ClockDaqDevice, EdgeType
-from xclock.errors import XClockException, XClockValueError
 from xclock.edge_detection import detect_edges_along_columns
+from xclock.errors import XClockException, XClockValueError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -217,6 +218,7 @@ def _set_output_channels_state(handle: int, channel_names: list[str], state: int
     logger.debug(f"Set output channels {channel_names} to {state}")
 
 
+@final
 class LabJackT4(ClockDaqDevice):
     """LabJack T4 device class
 
@@ -237,23 +239,27 @@ class LabJackT4(ClockDaqDevice):
     available_output_clock_channels = ("DIO6", "DIO7")
 
     @staticmethod
+    @override
     def get_available_output_clock_channels():
         return LabJackT4.available_output_clock_channels
 
+    @override
     def get_added_clock_channels(self) -> list[ClockChannel]:
         return copy.copy(self._clock_channels)
 
+    @override
     def get_unused_clock_channel_names(self) -> list[str]:
         return list(self._unused_clock_channel_names)
 
     avilable_output_const_channels = ("DIO5",)
 
     # the device can wait for triggers on these channels
-    availabile_input_trigger_channels = ("DIO4",)
+    available_input_trigger_channels = ("DIO4",)
 
     @staticmethod
+    @override
     def get_available_input_start_trigger_channels() -> tuple[str, ...]:
-        return LabJackT4.availabile_input_trigger_channels
+        return LabJackT4.available_input_trigger_channels
 
     base_clock_frequency_hz = 80_000_000  # 80 MHz
     divisor = 256
@@ -316,6 +322,7 @@ class LabJackT4(ClockDaqDevice):
             LabJackT4.available_output_clock_channels
         )
 
+    @override
     def start_clocks(
         self,
         wait_for_pulsed_clocks_to_finish: bool = False,  # return before timeout if pulsed clocks are finished
@@ -412,6 +419,7 @@ class LabJackT4(ClockDaqDevice):
 
             self.stop_clocks()
 
+    @override
     def stop_clocks(self):
         if self.handle is None:
             raise XClockException("Labjack device is not initialized")
@@ -437,6 +445,7 @@ class LabJackT4(ClockDaqDevice):
         for clock in self._clock_channels:
             clock.clock_enabled = False
 
+    @override
     def add_clock_channel(
         self,
         clock_tick_rate_hz: int | float,
@@ -474,7 +483,9 @@ class LabJackT4(ClockDaqDevice):
             len(self._used_clock_channel_names) + 1
         )  # CLOCK1 and CLOCK2 are used for PWM
         roll_value = (
-            self.base_clock_frequency_hz // self.divisor // int(clock_tick_rate_hz)
+            int(LabJackT4.base_clock_frequency_hz)
+            // self.divisor
+            // int(clock_tick_rate_hz)
         )
         _configure_clock(
             handle=self.handle,
@@ -482,7 +493,9 @@ class LabJackT4(ClockDaqDevice):
             divisor=self.divisor,
             roll_value=roll_value,
         )
-        actual_sample_rate = self.base_clock_frequency_hz // self.divisor // roll_value
+        actual_sample_rate = (
+            int(self.base_clock_frequency_hz) // self.divisor // roll_value
+        )
 
         _configure_channel_to_use_as_clock(
             handle=self.handle,
@@ -509,9 +522,10 @@ class LabJackT4(ClockDaqDevice):
         )
         return self._clock_channels[-1]
 
-    def remove_clock_channel(self, channel_name: str):
-        pass
+    def remove_clock_channel(self, channel_name: str) -> None:
+        raise NotImplementedError()
 
+    @override
     def start_clocks_and_record_edge_timestamps(
         self,
         wait_for_pulsed_clocks_to_finish: bool = True,
@@ -546,6 +560,7 @@ class LabJackT4(ClockDaqDevice):
         self.stop_clocks()
         streamer.stop_streaming()
 
+    @override
     def __str__(self):
         out = f"LabJack T4 with handle {self.handle}:\n"
         for channel in self._clock_channels:
@@ -566,6 +581,7 @@ class LabJackT4(ClockDaqDevice):
             )
             ljm.close(self.handle)
 
+    @override
     def wait_for_trigger_edge(
         self,
         channel_name: str,
@@ -597,6 +613,7 @@ class LabJackT4(ClockDaqDevice):
         logger.warning(f"Timeout waiting for rising edge on {channel_name}")
         return False
 
+    @override
     def clear_clocks(self):
         if self.handle is None:
             raise XClockException("Labjack device is not initialized")
@@ -609,6 +626,7 @@ class LabJackT4(ClockDaqDevice):
         )
 
 
+@final
 class LabJackEdgeStreamer:
     """
     Class to stream edges from a LabJack T4 device in the background.
@@ -627,8 +645,8 @@ class LabJackEdgeStreamer:
         handle: int,
         channel_names: list[str],
         internal_clock_sampling_rate_hz: int | float,
-        scan_rate_hz=1000,
-        filename=None,
+        scan_rate_hz: int = 1000,
+        filename: str | Path | None = None,
     ):
         self.handle = handle
         self.channel_names = channel_names.copy()
@@ -637,7 +655,7 @@ class LabJackEdgeStreamer:
 
         self.scan_rate = scan_rate_hz
         self.scans_per_read = int(scan_rate_hz / 2)
-        self.internal_clock_sampling_rate_hz = internal_clock_sampling_rate_hz
+        self.internal_clock_sampling_rate_hz = int(internal_clock_sampling_rate_hz)
         self.number_of_detected_edges = 0
 
         if filename is None:
@@ -656,7 +674,12 @@ class LabJackEdgeStreamer:
 
         self._start_streaming_timestamp = int(-1)
 
+        self._skipped_samples = 0
         self._last_row = np.zeros(shape=(1, self.number_of_sampled_channels + 1))
+
+        # CORE_TIMER rollover tracking (UINT32 rollover at 2^32)
+        self._timer_rollover_count = 0
+        self._timer_offset = np.int64(0)  # Cumulative offset due to rollovers
 
         try:
             ljm.eStreamStop(self.handle)
@@ -679,7 +702,7 @@ class LabJackEdgeStreamer:
         logger.debug("Waiting for streaming thread to become ready")
         result = self.ready_event.wait(5)
         if not result:
-            raise XClockException(f"Could not start edge detector thread")
+            raise XClockException("Could not start edge detector thread")
         logger.info(
             f"Start background streaming and edge detection on {self.channel_names[:-2]} at {self.scan_rate} Hz"
         )
@@ -688,12 +711,12 @@ class LabJackEdgeStreamer:
         """Stop background streaming"""
         if self.is_streaming():
             self.stop_event.set()
-            self.streaming_thread.join(timeout=2.0)  # type: ignore is_streaming asserts
+            self.streaming_thread.join(timeout=2.0)  # type: ignore is_streaming asserts  # pyright: ignore[reportOptionalMemberAccess]
             logger.info("Background streaming stopped")
 
     def is_streaming(self) -> bool:
         """Check if streaming is active"""
-        return self.streaming_thread and self.streaming_thread.is_alive()
+        return self.streaming_thread is not None and self.streaming_thread.is_alive()
 
     def _streaming_loop(self):
         """Main streaming loop running in background thread"""
@@ -707,13 +730,19 @@ class LabJackEdgeStreamer:
             aValues = [0, 0]
             ljm.eWriteNames(self.handle, len(aNames), aNames, aValues)
 
-            ljm.eStreamStart(
+            actual_scan_rate = ljm.eStreamStart(
                 handle=self.handle,
                 scansPerRead=self.scans_per_read,
                 scanRate=self.scan_rate,
                 aScanList=aScanList,
                 numAddresses=len(aScanList),
             )
+
+            if self.scan_rate != actual_scan_rate:
+                logger.warning(
+                    f"Requested scan rate {self.scan_rate} Hz differs from actual scan rate {actual_scan_rate} Hz"
+                )
+                self.scan_rate = actual_scan_rate
 
             self._start_streaming_timestamp = int(
                 ljm.eReadName(self.handle, "STREAM_START_TIME_STAMP")
@@ -729,7 +758,7 @@ class LabJackEdgeStreamer:
                     f"Read {len(aData)} data points from stream backlog={deviceScanBacklog}/{ljmScanBacklog} (device/host)"
                 )
 
-                curSkip = aData.count(SKIP_VALUE)
+                curSkip: int = aData.count(SKIP_VALUE)
                 if curSkip > 0:
                     logger.warning(f"Skipped {curSkip} samples in this read")
                 self._skipped_samples += curSkip
@@ -739,6 +768,27 @@ class LabJackEdgeStreamer:
                 # Combine 2 x 16 bit timer columns
                 data[:, -2] += data[:, -1] << 16
                 data = data[:, :-1]  # Drop last column
+
+                # Detect and handle CORE_TIMER rollover (UINT32 wraps at 2^32)
+                if self._last_row[0, -1] > 0:  # Skip first iteration
+                    # Check if any timer value rolled over
+                    # Rollover detected when current value is much smaller than previous
+                    # Use threshold of 2^31 to detect rollover (half of UINT32 range)
+                    timer_diff = data[:, -1] - self._last_row[0, -1]
+
+                    # If first value in this batch is significantly smaller than last value
+                    # from previous batch, a rollover occurred
+                    if data[0, -1] < self._last_row[0, -1] and timer_diff[0] < -(2**31):
+                        self._timer_rollover_count += 1
+                        self._timer_offset += np.int64(2**32)
+                        logger.info(
+                            f"CORE_TIMER rollover detected (rollover #{self._timer_rollover_count}). "
+                            f"Previous: {self._last_row[0, -1]}, Current: {data[0, -1]}, "
+                            f"New offset: {self._timer_offset}"
+                        )
+
+                # Apply cumulative offset to handle all previous rollovers
+                data[:, -1] += self._timer_offset
 
                 # data[:, -1] -= self._start_streaming_timestamp
 
