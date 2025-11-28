@@ -56,4 +56,11 @@ venvPath = "."
 venv = ".venv"
 
 [dependency-groups]
-dev = ["matplotlib>=3.10.3", "pytest>=8.4.1", "pytest-cov>=6.2.1"]
+dev = [
+    "matplotlib>=3.10.3",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "sphinx>=7.0.0",
+    "sphinx-rtd-theme>=2.0.0",
+    "myst-parser>=2.0.0",
+]
