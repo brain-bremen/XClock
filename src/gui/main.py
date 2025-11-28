@@ -1,8 +1,9 @@
+import json
 import logging
+import os
 import sys
 import threading
 import tkinter as tk
-import json
 from pathlib import Path
 from tkinter import scrolledtext, ttk
 from typing import Optional
@@ -533,13 +534,13 @@ class XClockGUI:
         self.is_running = False
         self.start_button.config(state="normal")
         self.stop_button.config(state="disabled")
-        
+
         if self.device and hasattr(self.device, "close"):
             try:
                 self.device.close()
             except Exception as e:
                 self.logger.error(f"Error closing device: {e}")
-        
+
         self.device = None
 
     def load_settings(self):
@@ -605,9 +606,13 @@ class XClockGUI:
 
 def main():
     """Main entry point for GUI."""
-    root = tk.Tk()
-    app = XClockGUI(root)
-    root.mainloop()
+    try:
+        root = tk.Tk()
+        app = XClockGUI(root)
+        root.mainloop()
+    except Exception as e:
+        print(f"Error starting GUI: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
