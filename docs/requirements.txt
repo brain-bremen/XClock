@@ -1,0 +1,9 @@
+# Documentation build requirements for Read the Docs
+
+# Sphinx and extensions
+sphinx>=7.0.0
+sphinx-rtd-theme>=2.0.0
+myst-parser>=2.0.0
+
+# Project dependencies (for API documentation)
+numpy>=2.2.0
