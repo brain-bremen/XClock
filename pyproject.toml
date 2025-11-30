@@ -1,6 +1,6 @@
 [project]
 name = "XClock"
-version = "0.3.0-dev"
+version = "0.3.0"
 description = "Tools for synchronizing eXperimental Clocks"
 readme = "README.md"
 license = { text = "MIT" }
@@ -36,7 +36,7 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/brain-bremen/XClock"
 Repository = "https://github.com/brain-bremen/XClock"
-Documentation = "https://github.com/brain-bremen/XClock#readme"
+Documentation = "https://xclock.readthedocs.io"
 Issues = "https://github.com/brain-bremen/XClock/issues"
 Changelog = "https://github.com/brain-bremen/XClock/releases"
 
