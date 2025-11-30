@@ -305,7 +305,6 @@ Now that you understand the basics:
 
 - Learn about {doc}`cli` for more command-line options
 - Read {doc}`devices` for device-specific features
-- Check {doc}`gui` for the graphical interface
 - Explore the {doc}`../api/devices` for advanced usage
 
 ## Common Issues

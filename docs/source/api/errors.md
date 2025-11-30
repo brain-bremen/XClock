@@ -485,4 +485,3 @@ except XClockException as e:
 - {doc}`devices` - Device API reference
 - {doc}`edge_detection` - Edge detection API
 - {doc}`../user/quickstart` - Usage examples
-- {doc}`../developer/contributing` - Contributing guide

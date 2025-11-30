@@ -72,7 +72,6 @@ t4.start_clocks_and_record_edge_timestamps(
 user/installation
 user/quickstart
 user/cli
-user/gui
 user/devices
 ```
 
@@ -81,8 +80,6 @@ user/devices
 :caption: Developer Guide
 
 developer/adding_devices
-developer/architecture
-developer/contributing
 ```
 
 ```{toctree}

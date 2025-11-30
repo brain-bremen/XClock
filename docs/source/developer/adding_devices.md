@@ -19,7 +19,7 @@ Before you start:
 - Familiarity with Python object-oriented programming
 - Understanding of your DAQ device's API/SDK
 - The device's driver/SDK installed and working
-- XClock development environment set up (see {doc}`contributing`)
+- XClock development environment set up
 
 ## Step 1: Understand the Interface
 
@@ -813,8 +813,6 @@ If you need help adding a new device:
 
 ## See Also
 
-- {doc}`architecture` - System architecture overview
-- {doc}`contributing` - Contribution guidelines
 - {doc}`../api/devices` - API reference
 - Example: `src/xclock/devices/labjack_devices.py`
 - Example: `src/xclock/devices/dummy_daq_device.py`

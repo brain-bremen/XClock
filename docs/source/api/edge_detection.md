@@ -390,4 +390,3 @@ print(f"Clock 1 frequency: {stats['mean']:.2f} ± {stats['std']:.2f} Hz")
 - {doc}`devices` - Device API reference
 - {doc}`errors` - Error handling
 - {doc}`../user/quickstart` - Usage examples
-- {doc}`../developer/architecture` - System architecture
