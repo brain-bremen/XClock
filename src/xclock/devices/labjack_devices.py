@@ -415,22 +415,29 @@ class LabJackT4(ClockDaqDevice):
             ]
             isDone = [False] * len(register_names)
             # t_start = time.time()
-            while not all(isDone):
-                for index, channel_register in enumerate(register_names):
-                    completed, target = ljm.eReadNames(
-                        self.handle,
-                        len(channel_register),
-                        aNames=channel_register,
-                    )
-                    if completed >= target:
-                        isDone[index] = True
-            # delay to let incoming edges settle/be processed
-            time.sleep(delay_after_last_pulse_s)
-            ljm.eWriteName(
-                self.handle, DigIoRegisters(self._clock_on_indicator_channel).channel, 0
-            )
-            for clock in pulsed_clocks:
-                clock.clock_enabled = False
+            try:
+                while not all(isDone):
+                    for index, channel_register in enumerate(register_names):
+                        completed, target = ljm.eReadNames(
+                            self.handle,
+                            len(channel_register),
+                            aNames=channel_register,
+                        )
+                        if completed >= target:
+                            isDone[index] = True
+                # delay to let incoming edges settle/be processed
+                time.sleep(delay_after_last_pulse_s)
+                ljm.eWriteName(
+                    self.handle, DigIoRegisters(self._clock_on_indicator_channel).channel, 0
+                )
+                for clock in pulsed_clocks:
+                    clock.clock_enabled = False
+            except Exception as e:
+                # Check if it's the "device not open" error
+                error_code = getattr(e, 'errorCode', None)
+                if error_code == 1224:  # LJME_DEVICE_NOT_OPEN
+                    raise XClockException("Device connection lost during operation")
+                raise
 
     @override
     def stop_clocks(self):
@@ -576,14 +583,16 @@ class LabJackT4(ClockDaqDevice):
             filename=filename,
         )
 
-        streamer.start_streaming()
-        time.sleep(0.5)
-        self.start_clocks(
-            wait_for_pulsed_clocks_to_finish=wait_for_pulsed_clocks_to_finish,
-        )
+        try:
+            streamer.start_streaming()
+            time.sleep(0.5)
+            self.start_clocks(
+                wait_for_pulsed_clocks_to_finish=wait_for_pulsed_clocks_to_finish,
+            )
 
-        self.stop_clocks()
-        streamer.stop_streaming()
+            self.stop_clocks()
+        finally:
+            streamer.stop_streaming()
 
     @override
     def __str__(self):
@@ -594,17 +603,24 @@ class LabJackT4(ClockDaqDevice):
         return out
 
     def __del__(self):
-        if self.handle:
-            channels_to_disable = []
-            channels_to_disable.extend([ch.channel_name for ch in self._clock_channels])
-            channels_to_disable.extend([self._clock_on_indicator_channel])
-            ljm.eWriteNames(
-                handle=self.handle,
-                numFrames=len(channels_to_disable),
-                aNames=channels_to_disable,
-                aValues=[0] * len(channels_to_disable),
-            )
-            ljm.close(self.handle)
+        if self.handle and ljm is not None:
+            try:
+                channels_to_disable = []
+                channels_to_disable.extend([ch.channel_name for ch in self._clock_channels])
+                channels_to_disable.extend([self._clock_on_indicator_channel])
+                ljm.eWriteNames(
+                    handle=self.handle,
+                    numFrames=len(channels_to_disable),
+                    aNames=channels_to_disable,
+                    aValues=[0] * len(channels_to_disable),
+                )
+                ljm.close(self.handle)
+            except Exception as e:
+                # Handle is already closed or invalid - this is OK during cleanup
+                # Check if it's the specific "device not open" error
+                error_code = getattr(e, 'errorCode', None)
+                if error_code != 1224:  # LJME_DEVICE_NOT_OPEN
+                    logger.debug(f"Error during device cleanup: {e}")
 
     @override
     def wait_for_trigger_edge(
