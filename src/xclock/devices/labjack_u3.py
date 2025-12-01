@@ -1,8 +1,16 @@
 from pathlib import Path
 
-from u3 import U3
+try:
+    from u3 import U3
+
+    U3_AVAILABLE = True
+except (ImportError, Exception) as e:
+    U3 = None
+    U3_AVAILABLE = False
+    # Don't log here - logger not yet configured and can cause XCB threading issues
 
 from xclock.devices.daq_device import ClockChannel, ClockDaqDevice, EdgeType
+from xclock.errors import XClockException
 
 # TODO:
 # - figure out which pins can be used for clocks, edge detection inputs and trigger output
@@ -20,6 +28,10 @@ class LabJackU3(ClockDaqDevice):
         raise NotImplementedError()
 
     def __init__(self):
+        if not U3_AVAILABLE or U3 is None:
+            raise XClockException(
+                "LabJack U3 library is not available. Please install the u3 package."
+            )
         self.u3 = U3()
 
     def get_added_clock_channels(self) -> list[ClockChannel]:

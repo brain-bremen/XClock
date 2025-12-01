@@ -1,13 +1,29 @@
 import copy
 import logging
 import os
+import sys
 import threading
 import time
 from enum import IntEnum
 from pathlib import Path
 from typing import final, override
 
-import labjack.ljm as ljm
+try:
+    import labjack.ljm as ljm
+
+    # Test if the library is actually functional (C library is loaded)
+    # The Python package can import but the C library may be missing
+    # Check if the internal LJM object (C library wrapper) is loaded
+    if hasattr(ljm.ljm, "LJM") and ljm.ljm.LJM is not None:
+        LJM_AVAILABLE = True
+    else:
+        # C library is not loaded properly
+        ljm = None
+        LJM_AVAILABLE = False
+except (ImportError, AttributeError, Exception) as e:
+    ljm = None
+    LJM_AVAILABLE = False
+
 import numpy as np
 
 from xclock.devices.daq_device import ClockChannel, ClockDaqDevice, EdgeType
@@ -279,6 +295,16 @@ class LabJackT4(ClockDaqDevice):
     def __init__(self):
         self._used_clock_channel_names = set()
         self._clock_channels = []
+
+        if not LJM_AVAILABLE or ljm is None:
+            self.handle = None
+            logger.error(
+                "Failed to open LabJack T4: LabJack LJM library is not available"
+            )
+            raise XClockException(
+                "LabJack LJM library is not available. Please install the LabJack drivers."
+            )
+
         try:
             self.handle = ljm.openS("T4", "ANY", "ANY")
         except Exception as e:

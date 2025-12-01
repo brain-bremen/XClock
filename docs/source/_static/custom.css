@@ -1,0 +1,22 @@
+/* Custom CSS for XClock documentation */
+
+/* Make logo background white */
+.wy-side-nav-search {
+    background-color: #ffffff !important;
+}
+
+/* Ensure logo image has white background */
+.wy-side-nav-search a img.logo {
+    background-color: #ffffff;
+    padding: 10px;
+}
+
+/* Adjust text color in nav search for visibility on white background */
+.wy-side-nav-search > a,
+.wy-side-nav-search .wy-dropdown > a {
+    color: #2980b9;
+}
+
+.wy-side-nav-search input[type=text] {
+    border-color: #2980b9;
+}

@@ -21,6 +21,10 @@ System](https://www.x.org/archive/X11R7.6/doc/man/man1/xclock.1.xhtml).
 
 [![Python Tests](https://github.com/brain-bremen/XClock/actions/workflows/python-tests.yml/badge.svg)](https://github.com/brain-bremen/XClock/actions/workflows/python-tests.yml)
 
+## Documentation
+
+Full documentation is available at [Read the Docs](https://xclock.readthedocs.io).
+
 ## Installation
 
 1. Install the software for you DAQ device, e.g. for the LabJack T Series from [here](https://support.labjack.com/docs/ljm-software-installer-downloads-t4-t7-t8-digit).
