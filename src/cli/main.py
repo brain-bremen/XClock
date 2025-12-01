@@ -257,7 +257,7 @@ Examples:
   xclock --clock-tick-rates 60,100 --device labjackt4 --number-of-pulses 200,150 start
   xclock --clock-tick-rates 60,100 --device labjackt4 --when on_trigger start
   xclock --clock-tick-rates 60,100 --device labjackt4 --record-timestamps start
-  xclock --clock-tick-rates 60,100 --record-timestamps --detect_edges_on EIO4,EIO5 start
+  xclock --clock-tick-rates 60,100 --record-timestamps --detect-edges-on EIO4,EIO5 start
   xclock --device labjackt4 stop
         """,
     )

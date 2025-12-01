@@ -71,6 +71,7 @@ class XClockGUI:
         self.is_running = False
         self.clock_thread: Optional[threading.Thread] = None
         self.available_devices = {}
+        self.text_handler: Optional[logging.Handler] = None
 
         self.setup_logging()
         self.check_devices()
@@ -314,11 +315,11 @@ class XClockGUI:
         )
 
         # Add text handler to logger
-        text_handler = TextHandler(self.log_text)
-        text_handler.setFormatter(
+        self.text_handler = TextHandler(self.log_text)
+        self.text_handler.setFormatter(
             logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
         )
-        logging.getLogger().addHandler(text_handler)
+        logging.getLogger().addHandler(self.text_handler)
 
         if not self.available_devices:
             self.logger.warning(
@@ -344,15 +345,27 @@ class XClockGUI:
     def on_verbose_change(self):
         """Handle verbose logging toggle."""
         if self.verbose_var.get():
-            logging.getLogger("xclock").setLevel(logging.DEBUG)
-            logging.getLogger("xclock.devices").setLevel(logging.DEBUG)
-            logging.getLogger("xclock.devices.labjack_devices").setLevel(logging.DEBUG)
-            logging.getLogger().setLevel(logging.DEBUG)
+            level = logging.DEBUG
+            logging.getLogger("xclock").setLevel(level)
+            logging.getLogger("xclock.devices").setLevel(level)
+            logging.getLogger("xclock.devices.labjack_devices").setLevel(level)
+            logging.getLogger().setLevel(level)
+            # Set level for all handlers on root logger
+            for handler in logging.getLogger().handlers:
+                handler.setLevel(level)
+            self.logger.debug("DEBUG level test message - you should see this!")
+            self.logger.info("Verbose logging enabled (DEBUG level)")
         else:
-            logging.getLogger("xclock").setLevel(logging.INFO)
-            logging.getLogger("xclock.devices").setLevel(logging.INFO)
-            logging.getLogger("xclock.devices.labjack_devices").setLevel(logging.INFO)
-            logging.getLogger().setLevel(logging.INFO)
+            self.logger.debug("This DEBUG message should disappear after toggle")
+            level = logging.INFO
+            logging.getLogger("xclock").setLevel(level)
+            logging.getLogger("xclock.devices").setLevel(level)
+            logging.getLogger("xclock.devices.labjack_devices").setLevel(level)
+            logging.getLogger().setLevel(level)
+            # Set level for all handlers on root logger
+            for handler in logging.getLogger().handlers:
+                handler.setLevel(level)
+            self.logger.info("Verbose logging disabled (INFO level)")
 
     def clear_log(self):
         """Clear the log text widget."""
@@ -458,8 +471,9 @@ class XClockGUI:
             clock_rates = self.parse_clock_rates()
             self.device = self.create_device()
             self.setup_clocks(self.device, clock_rates)
-
-            mode = self.mode_var.get()
+                now = time.time()
+                subsecond_microseconds = int((time.time() % 1) * 1000000)
+                filename = output_dir / f"xclock_timestamps_{timestamp_str}_{subsecond_microseconds:06d}.csv"
             has_pulsed_clocks = mode in ("duration", "pulses")
 
             # Handle timestamp recording
@@ -470,8 +484,10 @@ class XClockGUI:
 
                 import time
 
+                # Use microseconds to ensure uniqueness even with rapid restarts
                 timestamp_str = time.strftime("%Y-%m-%d_%H-%M-%S")
-                filename = output_dir / f"xclock_timestamps_{timestamp_str}.csv"
+                microseconds = int((time.time() % 1) * 1000000)
+                filename = output_dir / f"xclock_timestamps_{timestamp_str}_{microseconds:06d}.csv"
 
                 # Parse extra channels
                 extra_channels = []

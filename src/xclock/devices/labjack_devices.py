@@ -31,7 +31,6 @@ from xclock.edge_detection import detect_edges_along_columns
 from xclock.errors import XClockException, XClockValueError
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 SKIP_VALUE = -9999.0
 DEFAULT_OUTPUT_DIRECTORY = os.path.join(os.path.expanduser("~"), "Documents", "XClock")
