@@ -468,12 +468,12 @@ class XClockGUI:
     def run_clocks(self):
         """Run the clocks in a separate thread."""
         try:
+            import time
+
             clock_rates = self.parse_clock_rates()
             self.device = self.create_device()
             self.setup_clocks(self.device, clock_rates)
-                now = time.time()
-                subsecond_microseconds = int((time.time() % 1) * 1000000)
-                filename = output_dir / f"xclock_timestamps_{timestamp_str}_{subsecond_microseconds:06d}.csv"
+            mode = self.mode_var.get()
             has_pulsed_clocks = mode in ("duration", "pulses")
 
             # Handle timestamp recording
@@ -481,8 +481,6 @@ class XClockGUI:
                 self.logger.info("Recording edge timestamps...")
                 output_dir = Path.home() / "Documents" / "XClock"
                 output_dir.mkdir(parents=True, exist_ok=True)
-
-                import time
 
                 # Use microseconds to ensure uniqueness even with rapid restarts
                 timestamp_str = time.strftime("%Y-%m-%d_%H-%M-%S")
