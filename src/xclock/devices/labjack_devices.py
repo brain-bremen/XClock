@@ -13,8 +13,8 @@ try:
 
     # Test if the library is actually functional (C library is loaded)
     # The Python package can import but the C library may be missing
-    # Check if the internal LJM object (C library wrapper) is loaded
-    if hasattr(ljm.ljm, "LJM") and ljm.ljm.LJM is not None:
+    # Check if the openS function exists - this is a key function we need
+    if hasattr(ljm, "openS") and callable(ljm.openS):
         LJM_AVAILABLE = True
     else:
         # C library is not loaded properly
