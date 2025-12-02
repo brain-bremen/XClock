@@ -85,10 +85,6 @@ developer/adding_devices
 ```{toctree}
 :maxdepth: 2
 :caption: API Reference
-
-api/devices
-api/edge_detection
-api/errors
 ```
 
 ## Indices and Tables
