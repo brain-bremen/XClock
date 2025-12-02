@@ -128,7 +128,7 @@ Output file format: `xclock_timestamps_YYYY-MM-DD_HH-MM-SS.csv`
 
 ### `--detect-edges-on CHANNELS`
 
-Comma-separated list of additional channels to monitor for edge detection (beyond the clock output channels).
+Comma-separated list of additional channels to monitor (beyond the clock output channels).
 
 ```bash
 xclock --clock-tick-rates 60,100 --record-timestamps --detect-edges-on EIO4,EIO5 start
@@ -191,6 +191,7 @@ xclock --clock-tick-rates 60,100 --when on_trigger --timeout 30 start
 ```
 
 This will:
+
 1. Configure the clocks but not start them
 2. Wait for a rising edge on the trigger input (e.g., DIO4 on LabJack T4)
 3. Start clocks immediately when trigger is detected
@@ -231,6 +232,7 @@ xclock --clock-tick-rates 30,60 --duration 300 --record-timestamps start
 ```
 
 This creates:
+
 - Clock 1: 30 Hz (9,000 pulses over 5 minutes)
 - Clock 2: 60 Hz (18,000 pulses over 5 minutes)
 - Timestamp file with all frame times
@@ -270,11 +272,12 @@ With `--verbose`, you get detailed debug information:
 
 When using `--record-timestamps`, the output CSV file contains:
 
-| Column 1 | Column 2 | Column 3 |
-|----------|----------|----------|
+| Column 1                | Column 2  | Column 3                     |
+| ----------------------- | --------- | ---------------------------- |
 | Timestamp (nanoseconds) | Edge type | Unix timestamp (nanoseconds) |
 
 **Column descriptions:**
+
 - Column 1: Device-relative timestamp in nanoseconds (time since device start)
 - Column 2: Edge type encoding
   - Positive integer (1, 2, 3, ...): Rising edge on clock 1, 2, 3, ...
@@ -314,6 +317,7 @@ Error: Failed to initialize labjackt4: Device not found
 ```
 
 **Solutions**:
+
 - Check USB connection
 - Verify device drivers are installed
 - Try reconnecting the device
@@ -333,11 +337,10 @@ INFO - Timeout waiting for trigger.
 ```
 
 **Solutions**:
+
 - Increase timeout value
 - Check trigger signal connections
 - Verify trigger signal levels
-
-
 
 ## See Also
 

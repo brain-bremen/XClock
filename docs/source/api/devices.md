@@ -21,7 +21,7 @@ Abstract base class that all device implementations must inherit from.
 class ClockDaqDevice(ABC):
     """
     Abstract base class for all clock DAQ devices.
-    
+
     Attributes:
         handle: Device handle or connection identifier
         base_clock_frequency_hz: Base clock frequency of the device
@@ -41,9 +41,11 @@ def get_available_output_clock_channels() -> tuple[str, ...]
 Returns a tuple of channel names that can be used for clock output.
 
 **Returns:**
+
 - `tuple[str, ...]`: Channel names (e.g., `("FIO0", "FIO1", "FIO2")`)
 
 **Example:**
+
 ```python
 channels = LabJackT4.get_available_output_clock_channels()
 print(channels)  # ("FIO0", "FIO1", ..., "EIO3")
@@ -60,9 +62,11 @@ def get_available_input_start_trigger_channels() -> tuple[str, ...]
 Returns a tuple of channel names that can be used as trigger inputs.
 
 **Returns:**
+
 - `tuple[str, ...]`: Trigger channel names (e.g., `("DIO4",)`)
 
 **Example:**
+
 ```python
 triggers = LabJackT4.get_available_input_start_trigger_channels()
 print(triggers)  # ("DIO4",)
@@ -79,9 +83,11 @@ def __init__(self)
 Initialize the device and establish connection.
 
 **Raises:**
+
 - `XClockException`: If device initialization fails
 
 **Example:**
+
 ```python
 try:
     device = LabJackT4()
@@ -99,9 +105,11 @@ def get_added_clock_channels(self) -> list[ClockChannel]
 Returns a list of currently configured clock channels.
 
 **Returns:**
+
 - `list[ClockChannel]`: List of configured clocks
 
 **Example:**
+
 ```python
 device = LabJackT4()
 device.add_clock_channel(100, "FIO0")
@@ -120,9 +128,11 @@ def get_unused_clock_channel_names(self) -> list[str]
 Returns a list of channel names that are available (not yet configured).
 
 **Returns:**
+
 - `list[str]`: Unused channel names
 
 **Example:**
+
 ```python
 device = LabJackT4()
 device.add_clock_channel(100, "FIO0")
@@ -148,6 +158,7 @@ def add_clock_channel(
 Configure a new clock channel.
 
 **Parameters:**
+
 - `clock_tick_rate_hz` (int | float): Desired clock frequency in Hz
 - `channel_name` (str | None): Output channel name, or None for auto-select
 - `number_of_pulses` (int | None): Number of pulses to generate, or None for continuous
@@ -155,18 +166,22 @@ Configure a new clock channel.
 - `enable_clock_now` (bool): If True, start this clock immediately
 
 **Returns:**
+
 - `ClockChannel`: Configured clock channel object
 
 **Raises:**
+
 - `XClockException`: If channel is invalid or already in use
-- `XClockValueError`: If parameters are invalid
+- If parameters are invalid
 
 **Notes:**
+
 - `duration_s` and `number_of_pulses` are mutually exclusive
 - If both are None, clock runs continuously
 - Actual frequency may differ from requested (see `ClockChannel.actual_sample_rate_hz`)
 
 **Example:**
+
 ```python
 device = LabJackT4()
 
@@ -203,12 +218,15 @@ def start_clocks(
 Start all configured clocks simultaneously.
 
 **Parameters:**
+
 - `wait_for_pulsed_clocks_to_finish` (bool): If True, block until pulsed clocks complete
 
 **Raises:**
+
 - `XClockException`: If no clocks configured or start fails
 
 **Example:**
+
 ```python
 device = LabJackT4()
 device.add_clock_channel(100, "FIO0", number_of_pulses=500)
@@ -233,6 +251,7 @@ def stop_clocks(self)
 Stop all running clocks immediately.
 
 **Example:**
+
 ```python
 device = LabJackT4()
 device.add_clock_channel(100, "FIO0")
@@ -254,6 +273,7 @@ def clear_clocks(self)
 Remove all configured clocks and stop them if running.
 
 **Example:**
+
 ```python
 device = LabJackT4()
 device.add_clock_channel(100, "FIO0")
@@ -278,17 +298,21 @@ def wait_for_trigger_edge(
 Wait for an edge on the specified trigger input channel.
 
 **Parameters:**
+
 - `channel_name` (str): Trigger input channel name
 - `timeout_s` (float): Timeout in seconds (0 or negative = infinite)
 - `edge_type` (EdgeType): Type of edge to wait for
 
 **Returns:**
+
 - `bool`: True if triggered, False if timeout
 
 **Raises:**
+
 - `XClockException`: If channel is invalid
 
 **Example:**
+
 ```python
 device = LabJackT4()
 device.add_clock_channel(100, "FIO0", duration_s=10)
@@ -322,12 +346,14 @@ def start_clocks_and_record_edge_timestamps(
 Start clocks and record edge timestamps to a CSV file.
 
 **Parameters:**
+
 - `wait_for_pulsed_clocks_to_finish` (bool): Block until pulsed clocks finish
 - `extra_channels` (list[str]): Additional channels to monitor for edges
 - `filename` (Path | str | None): Output file path, or None for auto-generate
 
 **Output Format:**
 CSV file with three columns:
+
 - Column 1: Timestamp in nanoseconds (int64) - Device-relative time since start
 - Column 2: Edge type (int8)
   - Positive: Rising edge on clock N
@@ -335,6 +361,7 @@ CSV file with three columns:
 - Column 3: Unix timestamp in nanoseconds (int64) - Host system time
 
 **Example:**
+
 ```python
 from pathlib import Path
 
@@ -370,6 +397,7 @@ Clean up resources and close device connection.
 Always call this when done, or use context manager if supported.
 
 **Example:**
+
 ```python
 device = LabJackT4()
 try:
@@ -389,7 +417,7 @@ LabJack T4 USB DAQ device implementation.
 class LabJackT4(ClockDaqDevice):
     """
     XClock driver for LabJack T4 device.
-    
+
     Attributes:
         base_clock_frequency_hz: 80,000,000 (80 MHz)
         handle: LabJack device handle
@@ -397,6 +425,7 @@ class LabJackT4(ClockDaqDevice):
 ```
 
 **Specifications:**
+
 - Base clock: 80 MHz
 - Output channels: FIO0-7, EIO0-3 (12 total)
 - Trigger input: DIO4
@@ -404,6 +433,7 @@ class LabJackT4(ClockDaqDevice):
 - Timing precision: < 1 µs jitter
 
 **Example:**
+
 ```python
 from xclock.devices import LabJackT4
 
@@ -427,19 +457,21 @@ Software-only device for testing without hardware.
 class DummyDaqDevice(ClockDaqDevice):
     """
     Dummy DAQ device for testing.
-    
+
     Simulates all functionality without requiring hardware.
     Useful for development, testing, and demonstrations.
     """
 ```
 
 **Features:**
+
 - No hardware required
 - Same API as real devices
 - Simulated timestamps
 - Configurable behavior
 
 **Example:**
+
 ```python
 from xclock.devices import DummyDaqDevice
 
@@ -462,7 +494,7 @@ Represents a configured clock channel.
 class ClockChannel:
     """
     Configuration and state of a clock channel.
-    
+
     Attributes:
         channel_name: Output channel name (e.g., "FIO0")
         clock_id: Unique identifier (1, 2, 3, ...)
@@ -478,6 +510,7 @@ class ClockChannel:
 ```
 
 **Example:**
+
 ```python
 device = LabJackT4()
 clock = device.add_clock_channel(100, "FIO0", number_of_pulses=1000)
@@ -499,7 +532,7 @@ Enumeration for edge types in trigger detection.
 class EdgeType(Enum):
     """
     Type of edge for trigger detection.
-    
+
     Values:
         RISING: Rising edge (low to high)
         FALLING: Falling edge (high to low)
@@ -509,6 +542,7 @@ class EdgeType(Enum):
 ```
 
 **Example:**
+
 ```python
 from xclock.devices import EdgeType
 
@@ -534,26 +568,26 @@ try:
     # Check available resources
     output_channels = device.get_available_output_clock_channels()
     trigger_channels = device.get_available_input_start_trigger_channels()
-    
+
     print(f"Output channels: {output_channels}")
     print(f"Trigger channels: {trigger_channels}")
-    
+
     # Configure multiple synchronized clocks
     clock1 = device.add_clock_channel(
         clock_tick_rate_hz=60,
         channel_name="FIO0",
         duration_s=30.0,  # 30 seconds
     )
-    
+
     clock2 = device.add_clock_channel(
         clock_tick_rate_hz=100,
         channel_name="FIO1",
         duration_s=30.0,
     )
-    
+
     print(f"Clock 1: {clock1.actual_sample_rate_hz} Hz on {clock1.channel_name}")
     print(f"Clock 2: {clock2.actual_sample_rate_hz} Hz on {clock2.channel_name}")
-    
+
     # Wait for external trigger
     print("Waiting for trigger on DIO4...")
     triggered = device.wait_for_trigger_edge(
@@ -561,37 +595,37 @@ try:
         timeout_s=60.0,
         edge_type=EdgeType.RISING,
     )
-    
+
     if not triggered:
         print("Timeout - exiting")
         exit(1)
-    
+
     print("Trigger received! Starting clocks and recording...")
-    
+
     # Start clocks and record timestamps
     output_file = Path.home() / "Documents" / "XClock" / "experiment.csv"
     device.start_clocks_and_record_edge_timestamps(
         wait_for_pulsed_clocks_to_finish=True,
         filename=output_file,
     )
-    
+
     print(f"Recording complete: {output_file}")
-    
+
     # Load and analyze timestamps
     data = np.loadtxt(output_file, dtype=np.int64, delimiter=",")
     timestamps_ns = data[:, 0]       # Device-relative timestamps
     edge_types = data[:, 1]          # Edge type
     unix_timestamps_ns = data[:, 2]  # Unix timestamps (host time)
-    
+
     # Count edges per clock
     clock1_rising = np.sum(edge_types == 1)
     clock1_falling = np.sum(edge_types == -1)
     clock2_rising = np.sum(edge_types == 2)
     clock2_falling = np.sum(edge_types == -2)
-    
+
     print(f"Clock 1: {clock1_rising} rising, {clock1_falling} falling")
     print(f"Clock 2: {clock2_rising} rising, {clock2_falling} falling")
-    
+
 finally:
     # Always clean up
     device.close()
@@ -603,5 +637,4 @@ finally:
 - {doc}`../user/quickstart` - Getting started guide
 - {doc}`../user/devices` - Device-specific information
 - {doc}`../developer/adding_devices` - Adding new devices
-- {doc}`edge_detection` - Edge detection API
-- {doc}`errors` - Error handling
+- Error handling documentation has been removed

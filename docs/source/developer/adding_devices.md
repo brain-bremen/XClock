@@ -33,32 +33,32 @@ from xclock.devices.daq_device import ClockDaqDevice, ClockChannel, EdgeType
 
 class ClockDaqDevice(ABC):
     """Abstract base class for all clock DAQ devices."""
-    
+
     handle: int | None
     base_clock_frequency_hz: int | float
-    
+
     @staticmethod
     @abstractmethod
     def get_available_input_start_trigger_channels() -> tuple[str, ...]:
         """Return tuple of channel names that can be used as trigger inputs."""
         pass
-    
+
     @staticmethod
     @abstractmethod
     def get_available_output_clock_channels() -> tuple[str, ...]:
         """Return tuple of channel names that can output clock signals."""
         pass
-    
+
     @abstractmethod
     def get_added_clock_channels(self) -> list[ClockChannel]:
         """Return list of currently configured clock channels."""
         pass
-    
+
     @abstractmethod
     def get_unused_clock_channel_names(self) -> list[str]:
         """Return list of available (not yet used) channel names."""
         pass
-    
+
     @abstractmethod
     def add_clock_channel(
         self,
@@ -70,7 +70,7 @@ class ClockDaqDevice(ABC):
     ) -> ClockChannel:
         """Configure a new clock channel."""
         pass
-    
+
     @abstractmethod
     def wait_for_trigger_edge(
         self,
@@ -80,7 +80,7 @@ class ClockDaqDevice(ABC):
     ) -> bool:
         """Wait for trigger signal. Returns True if triggered, False if timeout."""
         pass
-    
+
     @abstractmethod
     def start_clocks(
         self,
@@ -88,7 +88,7 @@ class ClockDaqDevice(ABC):
     ):
         """Start all configured clocks."""
         pass
-    
+
     @abstractmethod
     def start_clocks_and_record_edge_timestamps(
         self,
@@ -98,17 +98,17 @@ class ClockDaqDevice(ABC):
     ):
         """Start clocks and record edge timestamps to CSV file."""
         pass
-    
+
     @abstractmethod
     def stop_clocks(self):
         """Stop all running clocks."""
         pass
-    
+
     @abstractmethod
     def clear_clocks(self):
         """Remove all configured clocks."""
         pass
-    
+
     @abstractmethod
     def close(self):
         """Clean up resources and close device connection."""
@@ -131,26 +131,26 @@ logger = logging.getLogger(__name__)
 class MyDAQDevice(ClockDaqDevice):
     """
     XClock driver for MyDAQ Device.
-    
+
     This device supports:
     - Base clock frequency: 100 MHz
     - 4 output channels (CH0-CH3)
     - 1 trigger input (TRIG0)
     - Hardware-synchronized multi-channel output
-    
+
     Example:
         >>> device = MyDAQDevice()
         >>> device.add_clock_channel(clock_tick_rate_hz=100, channel_name="CH0")
         >>> device.start_clocks()
         >>> device.close()
     """
-    
+
     def __init__(self):
         """Initialize MyDAQ device."""
         self.handle = None
         self.base_clock_frequency_hz = 100_000_000  # 100 MHz
         self._clock_channels = []
-        
+
         # Initialize your device here
         try:
             # Example: Open device connection
@@ -158,27 +158,27 @@ class MyDAQDevice(ClockDaqDevice):
             logger.info("MyDAQ device initialized successfully")
         except Exception as e:
             raise XClockException(f"Failed to initialize MyDAQ: {e}")
-    
+
     @staticmethod
     def get_available_output_clock_channels() -> tuple[str, ...]:
         """Return available output channels."""
         return ("CH0", "CH1", "CH2", "CH3")
-    
+
     @staticmethod
     def get_available_input_start_trigger_channels() -> tuple[str, ...]:
         """Return available trigger input channels."""
         return ("TRIG0",)
-    
+
     def get_added_clock_channels(self) -> list[ClockChannel]:
         """Return list of configured clock channels."""
         return self._clock_channels.copy()
-    
+
     def get_unused_clock_channel_names(self) -> list[str]:
         """Return list of unused channel names."""
         used_names = {ch.channel_name for ch in self._clock_channels}
         all_names = set(self.get_available_output_clock_channels())
         return list(all_names - used_names)
-    
+
     def add_clock_channel(
         self,
         clock_tick_rate_hz: int | float,
@@ -189,14 +189,14 @@ class MyDAQDevice(ClockDaqDevice):
     ) -> ClockChannel:
         """
         Add a new clock channel.
-        
+
         Args:
             clock_tick_rate_hz: Desired clock frequency in Hz
             channel_name: Output channel name (or None for auto-select)
             number_of_pulses: Number of pulses (None = continuous)
             duration_s: Duration in seconds (auto-calculates pulses)
             enable_clock_now: Start immediately if True
-        
+
         Returns:
             ClockChannel object with actual configuration
         """
@@ -206,23 +206,23 @@ class MyDAQDevice(ClockDaqDevice):
             if not unused:
                 raise XClockException("No available channels")
             channel_name = unused[0]
-        
+
         # Validate channel name
         if channel_name not in self.get_available_output_clock_channels():
             raise XClockException(f"Invalid channel: {channel_name}")
-        
+
         # Check if channel already in use
         if channel_name in [ch.channel_name for ch in self._clock_channels]:
             raise XClockException(f"Channel {channel_name} already in use")
-        
+
         # Calculate pulses from duration if needed
         if duration_s is not None and number_of_pulses is None:
             number_of_pulses = int(duration_s * clock_tick_rate_hz)
-        
+
         # Calculate actual achievable frequency
         # This is device-specific - adjust for your hardware
         actual_frequency = self._calculate_actual_frequency(clock_tick_rate_hz)
-        
+
         # Create clock channel object
         clock_id = len(self._clock_channels) + 1
         channel = ClockChannel(
@@ -232,19 +232,19 @@ class MyDAQDevice(ClockDaqDevice):
             actual_sample_rate_hz=actual_frequency,
             number_of_pulses=number_of_pulses,
         )
-        
+
         self._clock_channels.append(channel)
-        
+
         # Configure hardware
         self._configure_hardware_clock(channel)
-        
+
         logger.info(f"Added clock: {actual_frequency} Hz on {channel_name}")
         return channel
-    
+
     def _calculate_actual_frequency(self, requested_hz: float) -> int:
         """
         Calculate actual achievable frequency given device constraints.
-        
+
         This is device-specific. Implement based on your hardware's
         clock generation mechanism (divisors, PLLs, etc.).
         """
@@ -253,7 +253,7 @@ class MyDAQDevice(ClockDaqDevice):
         divisor = max(1, divisor)  # Ensure at least 1
         actual_hz = self.base_clock_frequency_hz / divisor
         return int(actual_hz)
-    
+
     def _configure_hardware_clock(self, channel: ClockChannel):
         """Configure hardware registers/settings for this clock."""
         # Implement device-specific configuration here
@@ -265,26 +265,26 @@ class MyDAQDevice(ClockDaqDevice):
         #     channel.number_of_pulses
         # )
         pass
-    
+
     def start_clocks(self, wait_for_pulsed_clocks_to_finish: bool = False):
         """Start all configured clocks."""
         if not self._clock_channels:
             raise XClockException("No clocks configured")
-        
+
         logger.info(f"Starting {len(self._clock_channels)} clocks")
-        
+
         # Start clocks on hardware
         # Example:
         # mydaq_sdk.start_all_clocks(self.handle)
-        
+
         # Mark all as enabled
         for channel in self._clock_channels:
             channel.clock_enabled = True
-        
+
         # Wait if requested
         if wait_for_pulsed_clocks_to_finish:
             self._wait_for_completion()
-    
+
     def _wait_for_completion(self):
         """Wait for pulsed clocks to finish."""
         # Implement waiting logic
@@ -292,25 +292,25 @@ class MyDAQDevice(ClockDaqDevice):
         # while mydaq_sdk.is_running(self.handle):
         #     time.sleep(0.1)
         pass
-    
+
     def stop_clocks(self):
         """Stop all running clocks."""
         logger.info("Stopping all clocks")
-        
+
         # Stop hardware
         # Example:
         # mydaq_sdk.stop_all_clocks(self.handle)
-        
+
         # Mark all as disabled
         for channel in self._clock_channels:
             channel.clock_enabled = False
-    
+
     def clear_clocks(self):
         """Remove all configured clocks."""
         self.stop_clocks()
         self._clock_channels.clear()
         logger.info("Cleared all clocks")
-    
+
     def wait_for_trigger_edge(
         self,
         channel_name: str,
@@ -319,26 +319,26 @@ class MyDAQDevice(ClockDaqDevice):
     ) -> bool:
         """
         Wait for trigger signal on specified channel.
-        
+
         Returns:
             True if triggered, False if timeout
         """
         if channel_name not in self.get_available_input_start_trigger_channels():
             raise XClockException(f"Invalid trigger channel: {channel_name}")
-        
+
         logger.info(f"Waiting for {edge_type.value} edge on {channel_name}")
-        
+
         # Implement trigger waiting
         # Example:
         # return mydaq_sdk.wait_for_edge(
-        #     self.handle, 
+        #     self.handle,
         #     channel_name,
         #     edge_type.value,
         #     timeout_s
         # )
-        
+
         return True  # Placeholder
-    
+
     def start_clocks_and_record_edge_timestamps(
         self,
         wait_for_pulsed_clocks_to_finish: bool = True,
@@ -348,7 +348,7 @@ class MyDAQDevice(ClockDaqDevice):
         """Start clocks and record edge timestamps to CSV file."""
         # This is complex - see LabJackT4 implementation for reference
         # You may need to implement a separate edge streamer class
-        
+
         # Generate default filename if not provided
         if filename is None:
             import time
@@ -356,28 +356,27 @@ class MyDAQDevice(ClockDaqDevice):
             output_dir.mkdir(parents=True, exist_ok=True)
             timestamp_str = time.strftime("%Y-%m-%d_%H-%M-%S")
             filename = output_dir / f"mydaq_timestamps_{timestamp_str}.csv"
-        
+
         # Start recording and clocks
         # This typically requires:
-        # 1. Start edge detection on all clock channels + extra_channels
-        # 2. Start clocks
-        # 3. Record timestamps
+        # 1. Start clocks
+        # 2. Record timestamps
         # 4. Save to CSV
-        
+
         raise NotImplementedError("Timestamp recording not yet implemented")
-    
+
     def close(self):
         """Clean up and close device."""
         if self.handle is not None:
             self.stop_clocks()
-            
+
             # Close device connection
             # Example:
             # mydaq_sdk.close_device(self.handle)
-            
+
             logger.info("MyDAQ device closed")
             self.handle = None
-    
+
     def __del__(self):
         """Destructor to ensure cleanup."""
         try:
@@ -414,7 +413,7 @@ def test_get_available_channels():
     output_channels = DEVICE_CLASS.get_available_output_clock_channels()
     assert len(output_channels) > 0
     assert all(isinstance(ch, str) for ch in output_channels)
-    
+
     trigger_channels = DEVICE_CLASS.get_available_input_start_trigger_channels()
     assert len(trigger_channels) >= 0  # May be 0 if no trigger support
 
@@ -423,18 +422,18 @@ def test_add_clock_channel():
     """Test adding a clock channel."""
     device = DEVICE_CLASS()
     channels = device.get_available_output_clock_channels()
-    
+
     clock = device.add_clock_channel(
         clock_tick_rate_hz=100,
         channel_name=channels[0],
         number_of_pulses=1000,
     )
-    
+
     assert clock is not None
     assert clock.channel_name == channels[0]
     assert clock.actual_sample_rate_hz > 0
     assert clock.number_of_pulses == 1000
-    
+
     device.close()
 
 
@@ -442,16 +441,16 @@ def test_multiple_clocks():
     """Test adding multiple synchronized clocks."""
     device = DEVICE_CLASS()
     channels = device.get_available_output_clock_channels()
-    
+
     if len(channels) < 2:
         pytest.skip("Device has fewer than 2 channels")
-    
+
     clock1 = device.add_clock_channel(60, channels[0], number_of_pulses=100)
     clock2 = device.add_clock_channel(100, channels[1], number_of_pulses=100)
-    
+
     assert clock1.channel_name != clock2.channel_name
     assert len(device.get_added_clock_channels()) == 2
-    
+
     device.close()
 
 
@@ -459,13 +458,13 @@ def test_start_stop_clocks():
     """Test starting and stopping clocks."""
     device = DEVICE_CLASS()
     channels = device.get_available_output_clock_channels()
-    
+
     device.add_clock_channel(100, channels[0], number_of_pulses=10)
-    
+
     # Should not raise
     device.start_clocks(wait_for_pulsed_clocks_to_finish=False)
     device.stop_clocks()
-    
+
     device.close()
 
 
@@ -473,39 +472,39 @@ def test_clear_clocks():
     """Test clearing all clocks."""
     device = DEVICE_CLASS()
     channels = device.get_available_output_clock_channels()
-    
+
     device.add_clock_channel(100, channels[0])
     assert len(device.get_added_clock_channels()) == 1
-    
+
     device.clear_clocks()
     assert len(device.get_added_clock_channels()) == 0
-    
+
     device.close()
 
 
 def test_auto_channel_selection():
     """Test automatic channel selection."""
     device = DEVICE_CLASS()
-    
+
     # Don't specify channel_name
     clock = device.add_clock_channel(clock_tick_rate_hz=100)
-    
+
     assert clock.channel_name in device.get_available_output_clock_channels()
-    
+
     device.close()
 
 
 def test_duration_pulse_calculation():
     """Test that duration correctly calculates pulses."""
     device = DEVICE_CLASS()
-    
+
     clock = device.add_clock_channel(
         clock_tick_rate_hz=100,
         duration_s=5.0,  # 5 seconds at 100 Hz = 500 pulses
     )
-    
+
     assert clock.number_of_pulses == 500
-    
+
     device.close()
 
 
@@ -513,17 +512,17 @@ def test_unused_channels():
     """Test getting unused channel names."""
     device = DEVICE_CLASS()
     channels = device.get_available_output_clock_channels()
-    
+
     # Initially all unused
     unused = device.get_unused_clock_channel_names()
     assert len(unused) == len(channels)
-    
+
     # Add one clock
     device.add_clock_channel(100, channels[0])
     unused = device.get_unused_clock_channel_names()
     assert len(unused) == len(channels) - 1
     assert channels[0] not in unused
-    
+
     device.close()
 
 
@@ -532,7 +531,7 @@ def test_close_cleanup():
     device = DEVICE_CLASS()
     device.add_clock_channel(100)
     device.close()
-    
+
     # After close, handle should be None
     assert device.handle is None
 ```
@@ -575,12 +574,13 @@ __all__ = [
 
 Add documentation in `docs/source/user/devices.md`:
 
-```markdown
+````markdown
 ### MyDAQ Device
 
 Brief description of your device.
 
 **Specifications:**
+
 - Base clock frequency: 100 MHz
 - Available output channels: 4 (CH0-CH3)
 - Trigger input: TRIG0
@@ -596,7 +596,7 @@ device.add_clock_channel(clock_tick_rate_hz=100, channel_name="CH0")
 device.start_clocks()
 device.close()
 \```
-```
+````
 
 ## Best Practices
 
@@ -740,35 +740,35 @@ from xclock.errors import XClockException
 
 class MinimalDevice(ClockDaqDevice):
     """Minimal device implementation for reference."""
-    
+
     def __init__(self):
         self.handle = 1  # Dummy handle
         self.base_clock_frequency_hz = 1_000_000
         self._clocks = []
-    
+
     @staticmethod
     def get_available_output_clock_channels() -> tuple[str, ...]:
         return ("CH0", "CH1")
-    
+
     @staticmethod
     def get_available_input_start_trigger_channels() -> tuple[str, ...]:
         return ("TRIG0",)
-    
+
     def get_added_clock_channels(self) -> list[ClockChannel]:
         return self._clocks.copy()
-    
+
     def get_unused_clock_channel_names(self) -> list[str]:
         used = {c.channel_name for c in self._clocks}
         return [ch for ch in self.get_available_output_clock_channels() if ch not in used]
-    
-    def add_clock_channel(self, clock_tick_rate_hz, channel_name=None, 
+
+    def add_clock_channel(self, clock_tick_rate_hz, channel_name=None,
                          number_of_pulses=None, duration_s=None, enable_clock_now=False):
         if channel_name is None:
             channel_name = self.get_unused_clock_channel_names()[0]
-        
+
         if duration_s and not number_of_pulses:
             number_of_pulses = int(duration_s * clock_tick_rate_hz)
-        
+
         channel = ClockChannel(
             channel_name=channel_name,
             clock_id=len(self._clocks) + 1,
@@ -778,25 +778,25 @@ class MinimalDevice(ClockDaqDevice):
         )
         self._clocks.append(channel)
         return channel
-    
+
     def start_clocks(self, wait_for_pulsed_clocks_to_finish=False):
         for c in self._clocks:
             c.clock_enabled = True
-    
+
     def stop_clocks(self):
         for c in self._clocks:
             c.clock_enabled = False
-    
+
     def clear_clocks(self):
         self._clocks.clear()
-    
+
     def wait_for_trigger_edge(self, channel_name, timeout_s=5.0, edge_type=EdgeType.RISING):
         return True
-    
+
     def start_clocks_and_record_edge_timestamps(self, wait_for_pulsed_clocks_to_finish=True,
                                                 extra_channels=[], filename=None):
         self.start_clocks(wait_for_pulsed_clocks_to_finish)
-    
+
     def close(self):
         self.stop_clocks()
         self.handle = None
